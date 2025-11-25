@@ -28,7 +28,7 @@ export function UserNav() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <SidebarMenuButton size="lg" className="w-full" tooltip="User Account">
+        <SidebarMenuButton size="lg" className="w-full" tooltip="Cuenta de usuario">
           <Avatar className="h-8 w-8">
             <AvatarImage
               src={user?.photoURL || userAvatar?.imageUrl}
@@ -46,7 +46,7 @@ export function UserNav() {
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">
-              {user?.displayName || 'User'}
+              {user?.displayName || 'Usuario'}
             </p>
             <p className="text-xs leading-none text-muted-foreground">
               {user?.email}
@@ -57,21 +57,21 @@ export function UserNav() {
         <DropdownMenuGroup>
           <DropdownMenuItem>
             <UserIcon />
-            Profile
+            Perfil
           </DropdownMenuItem>
           <DropdownMenuItem>
             <CreditCard />
-            Billing
+            Facturación
           </DropdownMenuItem>
           <DropdownMenuItem>
             <Settings />
-            Settings
+            Configuración
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout}>
           <LogOut />
-          Log out
+          Cerrar Sesión
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

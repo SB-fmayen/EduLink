@@ -31,9 +31,9 @@ import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { User } from 'firebase/auth';
 
 const formSchema = z.object({
-  fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
-  email: z.string().email({ message: 'Invalid email address.' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
+  fullName: z.string().min(2, { message: 'El nombre completo debe tener al menos 2 caracteres.' }),
+  email: z.string().email({ message: 'Correo electrónico inválido.' }),
+  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
 });
 
 
@@ -64,15 +64,15 @@ export default function SignupPage() {
               firstName: firstName,
               lastName: lastName,
               email: values.email,
-              role: 'student', // Default role
-              schoolId: 'default-school-id', // Assign a default or null schoolId
+              role: 'student', // Rol por defecto
+              schoolId: 'default-school-id', // Asignar un ID de escuela por defecto o nulo
             }, { merge: true });
         }
       });
     } catch (error: any) {
       toast({
         variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
+        title: '¡Uy! Algo salió mal.',
         description: error.message,
       });
     }
@@ -84,9 +84,9 @@ export default function SignupPage() {
         <div className="flex justify-center">
           <Logo />
         </div>
-        <CardTitle className="text-2xl text-center">Sign Up</CardTitle>
+        <CardTitle className="text-2xl text-center">Crear Cuenta</CardTitle>
         <CardDescription className="text-center">
-          Create your EduLink account
+          Crea tu cuenta en EduLink
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -97,7 +97,7 @@ export default function SignupPage() {
               name="fullName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Full name</FormLabel>
+                  <FormLabel>Nombre completo</FormLabel>
                   <FormControl>
                     <Input placeholder="John Doe" {...field} />
                   </FormControl>
@@ -110,9 +110,9 @@ export default function SignupPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Correo Electrónico</FormLabel>
                   <FormControl>
-                    <Input placeholder="m@example.com" {...field} />
+                    <Input placeholder="m@ejemplo.com" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -123,7 +123,7 @@ export default function SignupPage() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel>Contraseña</FormLabel>
                   <FormControl>
                     <Input type="password" {...field} />
                   </FormControl>
@@ -132,14 +132,14 @@ export default function SignupPage() {
               )}
             />
             <Button type="submit" className="w-full">
-              Create an account
+              Crear una cuenta
             </Button>
           </form>
         </Form>
         <div className="mt-4 text-center text-sm">
-          Already have an account?{' '}
+          ¿Ya tienes una cuenta?{' '}
           <Link href="/login" className="underline">
-            Login
+            Iniciar Sesión
           </Link>
         </div>
       </CardContent>

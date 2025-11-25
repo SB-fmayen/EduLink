@@ -19,20 +19,20 @@ import { PlusCircle } from 'lucide-react';
 const schools = [
   {
     id: '1',
-    name: 'Innovate Academy',
+    name: 'Academia Innovate',
     director: 'Dr. Evelyn Reed',
     created: '2023-01-15',
   },
   {
     id: '2',
-    name: 'North Star High',
-    director: 'Mr. David Chen',
+    name: 'Secundaria North Star',
+    director: 'Sr. David Chen',
     created: '2023-02-20',
   },
   {
     id: '3',
-    name: 'Horizon Elementary',
-    director: 'Ms. Maria Garcia',
+    name: 'Primaria Horizon',
+    director: 'Sra. Maria Garcia',
     created: '2023-03-10',
   },
 ];
@@ -41,28 +41,28 @@ export default function SchoolsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Schools</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Escuelas</h1>
         <Button>
           <PlusCircle className="mr-2 h-4 w-4" />
-          Create School
+          Crear Escuela
         </Button>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>School Management</CardTitle>
+          <CardTitle>Gestión de Escuelas</CardTitle>
           <CardDescription>
-            A list of all registered schools in the system.
+            Una lista de todas las escuelas registradas en el sistema.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>School Name</TableHead>
+                <TableHead>Nombre de la Escuela</TableHead>
                 <TableHead>Director</TableHead>
-                <TableHead>Created Date</TableHead>
+                <TableHead>Fecha de Creación</TableHead>
                 <TableHead>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -74,7 +74,7 @@ export default function SchoolsPage() {
                   <TableCell>{school.created}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="sm">
-                      Edit
+                      Editar
                     </Button>
                   </TableCell>
                 </TableRow>

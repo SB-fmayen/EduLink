@@ -27,8 +27,8 @@ import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
-  email: z.string().email({ message: 'Invalid email address.' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
+  email: z.string().email({ message: 'Correo electrónico inválido.' }),
+  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
 });
 
 export default function LoginPage() {
@@ -49,7 +49,7 @@ export default function LoginPage() {
     } catch (error: any) {
       toast({
         variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
+        title: '¡Uy! Algo salió mal.',
         description: error.message,
       });
     }
@@ -61,9 +61,9 @@ export default function LoginPage() {
         <div className="flex justify-center">
           <Logo />
         </div>
-        <CardTitle className="text-2xl text-center">Login</CardTitle>
+        <CardTitle className="text-2xl text-center">Iniciar Sesión</CardTitle>
         <CardDescription className="text-center">
-          Enter your email below to login to your account
+          Ingresa tu correo para acceder a tu cuenta
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -74,9 +74,9 @@ export default function LoginPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Correo Electrónico</FormLabel>
                   <FormControl>
-                    <Input placeholder="m@example.com" {...field} />
+                    <Input placeholder="m@ejemplo.com" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -88,9 +88,9 @@ export default function LoginPage() {
               render={({ field }) => (
                 <FormItem>
                    <div className="flex items-center">
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>Contraseña</FormLabel>
                     <Link href="#" className="ml-auto inline-block text-sm underline">
-                      Forgot your password?
+                      ¿Olvidaste tu contraseña?
                     </Link>
                   </div>
                   <FormControl>
@@ -101,14 +101,14 @@ export default function LoginPage() {
               )}
             />
             <Button type="submit" className="w-full">
-              Login
+              Iniciar Sesión
             </Button>
           </form>
         </Form>
         <div className="mt-4 text-center text-sm">
-          Don&apos;t have an account?{' '}
+          ¿No tienes una cuenta?{' '}
           <Link href="/signup" className="underline">
-            Sign up
+            Regístrate
           </Link>
         </div>
       </CardContent>
