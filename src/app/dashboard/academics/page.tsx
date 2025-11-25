@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { collection, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, query, where } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -73,6 +73,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Role } from '@/lib/roles';
+
 
 interface SubjectData {
   id: string;
@@ -414,7 +416,7 @@ interface SectionData {
 
 const sectionFormSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
-  gradeId: z.string({ required_error: 'Debes seleccionar un grado.' }),
+  gradeId: z.string({ required_error: 'Debes seleccionar un grado.' }).min(1, {message: 'Debes seleccionar un grado.'}),
 });
 
 function SectionsManager() {
@@ -610,6 +612,225 @@ function SectionsManager() {
   );
 }
 
+// Componente para la gestión de cursos
+interface CourseData {
+  id: string;
+  subjectId: string;
+  sectionId: string;
+  teacherId: string;
+  schedule: string;
+  createdAt?: {
+    toDate: () => Date;
+  };
+}
+
+interface UserData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role: Role;
+}
+
+const courseFormSchema = z.object({
+  subjectId: z.string({ required_error: 'Debes seleccionar una asignatura.' }).min(1, { message: 'Debes seleccionar una asignatura.' }),
+  sectionId: z.string({ required_error: 'Debes seleccionar una sección.' }).min(1, { message: 'Debes seleccionar una sección.' }),
+  teacherId: z.string({ required_error: 'Debes seleccionar un profesor.' }).min(1, { message: 'Debes seleccionar un profesor.' }),
+  schedule: z.string().min(3, { message: 'El horario debe tener al menos 3 caracteres.' }),
+});
+
+function CoursesManager() {
+  const firestore = useFirestore();
+  const { user } = useUser();
+
+  const userDocRef = useMemoFirebase(() => (user ? doc(firestore, `users/${user.uid}`) : null), [user, firestore]);
+  const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
+  const schoolId = userData?.schoolId;
+
+  // Fetching data
+  const coursesRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null), [schoolId, firestore]);
+  const { data: courses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
+
+  const subjectsRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null), [schoolId, firestore]);
+  const { data: subjects, isLoading: isLoadingSubjects } = useCollection<SubjectData>(subjectsRef);
+
+  const sectionsRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null), [schoolId, firestore]);
+  const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
+  
+  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
+  const { data: grades } = useCollection<GradeData>(gradesRef);
+
+  const usersRef = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const teachersQuery = useMemoFirebase(() => query(usersRef, where('role', '==', 'teacher')), [usersRef]);
+  const { data: teachers, isLoading: isLoadingTeachers } = useCollection<UserData>(teachersQuery);
+
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [editingCourse, setEditingCourse] = React.useState<CourseData | null>(null);
+  
+  const form = useForm<z.infer<typeof courseFormSchema>>({
+    resolver: zodResolver(courseFormSchema),
+    defaultValues: { subjectId: '', sectionId: '', teacherId: '', schedule: '' },
+  });
+
+  React.useEffect(() => {
+    form.reset(editingCourse || { subjectId: '', sectionId: '', teacherId: '', schedule: '' });
+  }, [editingCourse, form]);
+
+  // Click Handlers
+  const handleEditClick = (course: CourseData) => {
+    setEditingCourse(course);
+    setIsDialogOpen(true);
+  };
+  const handleCreateClick = () => {
+    setEditingCourse(null);
+    setIsDialogOpen(true);
+  };
+  const handleDelete = (courseId: string) => {
+    if (!schoolId) return;
+    const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', courseId);
+    deleteDocumentNonBlocking(courseDocRef);
+    toast({ title: 'Curso Eliminado', description: 'El curso ha sido eliminado correctamente.' });
+  };
+  
+  const onSubmit = (values: z.infer<typeof courseFormSchema>) => {
+    if (!schoolId || !coursesRef) return;
+    if (editingCourse) {
+      const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', editingCourse.id);
+      updateDocumentNonBlocking(courseDocRef, values);
+      toast({ title: 'Curso Actualizado', description: 'La información del curso ha sido actualizada.' });
+    } else {
+      addDocumentNonBlocking(coursesRef, { ...values, schoolId, createdAt: serverTimestamp() });
+      toast({ title: 'Curso Creado', description: 'El nuevo curso ha sido creado correctamente.' });
+    }
+    setIsDialogOpen(false);
+    setEditingCourse(null);
+  };
+
+  // Data mapping for display
+  const subjectsMap = React.useMemo(() => subjects?.reduce((acc, s) => ({ ...acc, [s.id]: s.name }), {} as Record<string, string>) || {}, [subjects]);
+  const teachersMap = React.useMemo(() => teachers?.reduce((acc, t) => ({ ...acc, [t.id]: `${t.firstName} ${t.lastName}` }), {} as Record<string, string>) || {}, [teachers]);
+  const gradesMap = React.useMemo(() => grades?.reduce((acc, g) => ({ ...acc, [g.id]: g.name }), {} as Record<string, string>) || {}, [grades]);
+  const sectionsMap = React.useMemo(() => sections?.reduce((acc, s) => ({ ...acc, [s.id]: { name: s.name, gradeId: s.gradeId } }), {} as Record<string, {name: string, gradeId: string}>) || {}, [sections]);
+
+  const isLoading = isLoadingCourses || isLoadingSubjects || isLoadingSections || isLoadingTeachers;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Gestión de Cursos</CardTitle>
+          <CardDescription>Asigna materias, profesores y horarios a cada sección.</CardDescription>
+        </div>
+        <Button onClick={handleCreateClick}><PlusCircle className="mr-2 h-4 w-4" /> Crear Curso</Button>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Asignatura</TableHead>
+              <TableHead>Sección</TableHead>
+              <TableHead>Profesor</TableHead>
+              <TableHead>Horario</TableHead>
+              <TableHead><span className="sr-only">Acciones</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={5} className="text-center">Cargando...</TableCell></TableRow>
+            ) : courses && courses.length > 0 ? (
+              courses.map((course) => {
+                const sectionInfo = sectionsMap[course.sectionId];
+                const gradeName = sectionInfo ? gradesMap[sectionInfo.gradeId] : '';
+                return (
+                    <TableRow key={course.id}>
+                    <TableCell className="font-medium">{subjectsMap[course.subjectId] || 'N/A'}</TableCell>
+                    <TableCell>{sectionInfo ? `${gradeName} - ${sectionInfo.name}`: 'N/A'}</TableCell>
+                    <TableCell>{teachersMap[course.teacherId] || 'N/A'}</TableCell>
+                    <TableCell>{course.schedule}</TableCell>
+                    <TableCell className="text-right">
+                        <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditClick(course)}>Editar</DropdownMenuItem>
+                            <AlertDialog>
+                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente el curso.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(course.id)}>Continuar</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                            </AlertDialog>
+                        </DropdownMenuContent>
+                        </DropdownMenu>
+                    </TableCell>
+                    </TableRow>
+                )
+              })
+            ) : (
+              <TableRow><TableCell colSpan={5} className="text-center">No hay cursos registrados.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+                <DialogTitle>{editingCourse ? 'Editar Curso' : 'Crear Nuevo Curso'}</DialogTitle>
+                <DialogDescription>Completa los detalles para configurar el curso.</DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
+                <FormField control={form.control} name="subjectId" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Asignatura</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una asignatura" /></SelectTrigger></FormControl>
+                        <SelectContent>{subjects?.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
+                <FormField control={form.control} name="sectionId" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Sección</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una sección" /></SelectTrigger></FormControl>
+                        <SelectContent>{sections?.map((s) => (<SelectItem key={s.id} value={s.id}>{gradesMap[s.gradeId]} - {s.name}</SelectItem>))}</SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
+                <FormField control={form.control} name="teacherId" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Profesor</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un profesor" /></SelectTrigger></FormControl>
+                        <SelectContent>{teachers?.map((t) => (<SelectItem key={t.id} value={t.id}>{t.firstName} {t.lastName}</SelectItem>))}</SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
+                <FormField control={form.control} name="schedule" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Horario</FormLabel>
+                        <FormControl><Input placeholder="Lunes 9-10am" {...field} /></FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )} />
+                <DialogFooter>
+                    <Button type="submit">{editingCourse ? 'Guardar Cambios' : 'Crear Curso'}</Button>
+                </DialogFooter>
+            </form>
+            </Form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
 
 export default function AcademicsPage() {
   return (
@@ -644,23 +865,9 @@ export default function AcademicsPage() {
           <SectionsManager />
         </TabsContent>
         <TabsContent value="courses">
-          <Card>
-            <CardHeader>
-              <CardTitle>Gestión de Cursos</CardTitle>
-              <CardDescription>
-                Asigna materias, profesores y horarios a cada sección.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Funcionalidad en construcción.
-              </p>
-            </CardContent>
-          </Card>
+          <CoursesManager />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-
-    
