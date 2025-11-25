@@ -10,45 +10,53 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useAuth, useUser } from '@/firebase';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { CreditCard, LogOut, Settings, User } from 'lucide-react';
+import { CreditCard, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import { SidebarMenuButton } from './ui/sidebar';
+import { getAuth, signOut } from 'firebase/auth';
 
 export function UserNav() {
+  const { user } = useUser();
+  const auth = useAuth();
   const userAvatar = PlaceHolderImages.find((img) => img.id === 'user-avatar');
+
+  const handleLogout = () => {
+    signOut(auth);
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <SidebarMenuButton
-          size="lg"
-          className="w-full"
-          tooltip="User Account"
-        >
+        <SidebarMenuButton size="lg" className="w-full" tooltip="User Account">
           <Avatar className="h-8 w-8">
             <AvatarImage
-              src={userAvatar?.imageUrl}
+              src={user?.photoURL || userAvatar?.imageUrl}
               alt="User avatar"
               data-ai-hint={userAvatar?.imageHint}
             />
-            <AvatarFallback>AD</AvatarFallback>
+            <AvatarFallback>
+              {user?.email?.charAt(0).toUpperCase()}
+            </AvatarFallback>
           </Avatar>
-          <span className="text-left">Admin User</span>
+          <span className="text-left">{user?.displayName || user?.email}</span>
         </SidebarMenuButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56 mb-2" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">Admin User</p>
+            <p className="text-sm font-medium leading-none">
+              {user?.displayName || 'User'}
+            </p>
             <p className="text-xs leading-none text-muted-foreground">
-              admin@edulink.com
+              {user?.email}
             </p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem>
-            <User />
+            <UserIcon />
             Profile
           </DropdownMenuItem>
           <DropdownMenuItem>
@@ -61,7 +69,7 @@ export function UserNav() {
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={handleLogout}>
           <LogOut />
           Log out
         </DropdownMenuItem>

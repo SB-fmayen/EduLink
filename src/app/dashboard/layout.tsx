@@ -1,3 +1,5 @@
+'use client';
+
 import * as React from 'react';
 import {
   Sidebar,
@@ -14,12 +16,31 @@ import { UserNav } from '@/components/user-nav';
 import { Button } from '@/components/ui/button';
 import { Bell, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useUser } from '@/firebase';
+import { useRouter } from 'next/navigation';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isUserLoading, router]);
+
+  if (isUserLoading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Logo />
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider>
       <Sidebar>
