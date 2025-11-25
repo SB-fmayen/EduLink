@@ -111,7 +111,7 @@ service cloud.firestore {
 
       match /studentCourses/{studentCourseId} {
         allow get, list: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
+        allow create: if (isOwner(userId) && request.resource.data.studentId == userId) || isAdmin();
         allow update, delete: if (isOwner(userId) || isAdmin()) && resource != null && request.resource.data.studentId == resource.data.studentId;
       }
 
