@@ -66,6 +66,13 @@ import {
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import React from 'react';
 import { toast } from '@/hooks/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface SubjectData {
   id: string;
@@ -395,6 +402,214 @@ function GradesManager() {
   );
 }
 
+// Componente para la gestión de secciones
+interface SectionData {
+  id: string;
+  name: string;
+  gradeId: string;
+  createdAt?: {
+    toDate: () => Date;
+  };
+}
+
+const sectionFormSchema = z.object({
+  name: z.string().min(1, { message: 'El nombre es requerido.' }),
+  gradeId: z.string({ required_error: 'Debes seleccionar un grado.' }),
+});
+
+function SectionsManager() {
+  const firestore = useFirestore();
+  const { user } = useUser();
+  
+  const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
+  const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
+  const schoolId = userData?.schoolId;
+
+  const sectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
+  const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
+  
+  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
+  const { data: grades, isLoading: isLoadingGrades } = useCollection<GradeData>(gradesRef);
+
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [editingSection, setEditingSection] = React.useState<SectionData | null>(null);
+
+  const form = useForm<z.infer<typeof sectionFormSchema>>({
+    resolver: zodResolver(sectionFormSchema),
+    defaultValues: { name: '', gradeId: '' },
+  });
+
+  React.useEffect(() => {
+    form.reset({ name: editingSection?.name || '', gradeId: editingSection?.gradeId || '' });
+  }, [editingSection, form]);
+
+  const handleEditClick = (section: SectionData) => {
+    setEditingSection(section);
+    setIsDialogOpen(true);
+  };
+
+  const handleCreateClick = () => {
+    setEditingSection(null);
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = (sectionId: string) => {
+    if (!schoolId) return;
+    const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', sectionId);
+    deleteDocumentNonBlocking(sectionDocRef);
+    toast({
+        title: "Sección Eliminada",
+        description: "La sección ha sido eliminada correctamente."
+    });
+  };
+
+  const onSubmit = (values: z.infer<typeof sectionFormSchema>) => {
+    if (!schoolId) return;
+    if (editingSection) {
+      const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', editingSection.id);
+      updateDocumentNonBlocking(sectionDocRef, values);
+       toast({
+        title: "Sección Actualizada",
+        description: "La información de la sección ha sido actualizada."
+      });
+    } else {
+      addDocumentNonBlocking(sectionsRef!, { ...values, schoolId, createdAt: serverTimestamp() });
+       toast({
+        title: "Sección Creada",
+        description: "La nueva sección ha sido creada correctamente."
+      });
+    }
+    setIsDialogOpen(false);
+    setEditingSection(null);
+  };
+  
+  const gradesMap = React.useMemo(() => {
+    if (!grades) return {};
+    return grades.reduce((acc, grade) => {
+      acc[grade.id] = grade.name;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [grades]);
+
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+            <CardTitle>Gestión de Secciones</CardTitle>
+            <CardDescription>Organiza los grupos de estudiantes dentro de cada grado.</CardDescription>
+        </div>
+        <Button onClick={handleCreateClick}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Crear Sección
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <Table>
+            <TableHeader>
+                <TableRow>
+                <TableHead>Nombre de la Sección</TableHead>
+                <TableHead>Grado</TableHead>
+                <TableHead>Fecha de Creación</TableHead>
+                <TableHead><span className="sr-only">Acciones</span></TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {isLoadingSections ? (
+                <TableRow><TableCell colSpan={4} className="text-center">Cargando...</TableCell></TableRow>
+                ) : sections && sections.length > 0 ? (
+                sections.map((section) => (
+                    <TableRow key={section.id}>
+                    <TableCell className="font-medium">{section.name}</TableCell>
+                    <TableCell>{gradesMap[section.gradeId] || 'N/A'}</TableCell>
+                    <TableCell>{section.createdAt ? new Date(section.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                        <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditClick(section)}>Editar</DropdownMenuItem>
+                            <AlertDialog>
+                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la sección.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(section.id)}>Continuar</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                            </AlertDialog>
+                        </DropdownMenuContent>
+                        </DropdownMenu>
+                    </TableCell>
+                    </TableRow>
+                ))
+                ) : (
+                <TableRow><TableCell colSpan={4} className="text-center">No hay secciones registradas.</TableCell></TableRow>
+                )}
+            </TableBody>
+        </Table>
+      </CardContent>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+            <DialogTitle>{editingSection ? 'Editar Sección' : 'Crear Nueva Sección'}</DialogTitle>
+            <DialogDescription>{editingSection ? 'Modifica los detalles de la sección.' : 'Completa los detalles para crear una nueva sección.'}</DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
+                <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Nombre de la Sección</FormLabel>
+                    <FormControl><Input placeholder="Sección A" {...field} /></FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="gradeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Grado</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona un grado" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {isLoadingGrades ? (
+                            <SelectItem value="loading" disabled>Cargando grados...</SelectItem>
+                          ) : (
+                            grades?.map((grade) => (
+                              <SelectItem key={grade.id} value={grade.id}>
+                                {grade.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                <Button type="submit">{editingSection ? 'Guardar Cambios' : 'Crear Sección'}</Button>
+                </DialogFooter>
+            </form>
+            </Form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
 
 export default function AcademicsPage() {
   return (
@@ -426,19 +641,7 @@ export default function AcademicsPage() {
           <GradesManager />
         </TabsContent>
         <TabsContent value="sections">
-          <Card>
-            <CardHeader>
-              <CardTitle>Gestión de Secciones</CardTitle>
-              <CardDescription>
-                Organiza los grupos de estudiantes dentro de cada grado.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Funcionalidad en construcción.
-              </p>
-            </CardContent>
-          </Card>
+          <SectionsManager />
         </TabsContent>
         <TabsContent value="courses">
           <Card>
@@ -459,3 +662,5 @@ export default function AcademicsPage() {
     </div>
   );
 }
+
+    
