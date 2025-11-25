@@ -78,7 +78,7 @@ import { MoreHorizontal, PlusCircle } from 'lucide-react';
 
 
 // Componente para la gestión de Cursos (Asignaturas)
-interface CourseData {
+interface SubjectData {
   id: string;
   name: string;
   createdAt?: {
@@ -86,7 +86,7 @@ interface CourseData {
   };
 }
 
-const courseFormSchema = z.object({
+const subjectFormSchema = z.object({
   name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
 });
 
@@ -98,79 +98,78 @@ function CoursesManager() {
   const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
   const schoolId = userData?.schoolId;
 
-  // En el nuevo flujo, los "Cursos" son en realidad las "Asignaturas" (Subjects)
-  const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
-  const { data: courses, isLoading } = useCollection<CourseData>(coursesRef);
+  const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
+  const { data: subjects, isLoading } = useCollection<SubjectData>(subjectsRef);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [editingCourse, setEditingCourse] = React.useState<CourseData | null>(null);
+  const [editingSubject, setEditingSubject] = React.useState<SubjectData | null>(null);
 
-  const form = useForm<z.infer<typeof courseFormSchema>>({
-    resolver: zodResolver(courseFormSchema),
+  const form = useForm<z.infer<typeof subjectFormSchema>>({
+    resolver: zodResolver(subjectFormSchema),
     defaultValues: { name: '' },
   });
 
   React.useEffect(() => {
-    form.reset({ name: editingCourse?.name || '' });
-  }, [editingCourse, form]);
+    form.reset({ name: editingSubject?.name || '' });
+  }, [editingSubject, form]);
 
-  const handleEditClick = (course: CourseData) => {
-    setEditingCourse(course);
+  const handleEditClick = (subject: SubjectData) => {
+    setEditingSubject(subject);
     setIsDialogOpen(true);
   };
 
   const handleCreateClick = () => {
-    setEditingCourse(null);
+    setEditingSubject(null);
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (courseId: string) => {
+  const handleDelete = (subjectId: string) => {
     if (!schoolId) return;
-    const courseDocRef = doc(firestore, 'schools', schoolId, 'subjects', courseId);
-    deleteDocumentNonBlocking(courseDocRef);
+    const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', subjectId);
+    deleteDocumentNonBlocking(subjectDocRef);
     toast({
-        title: "Curso Eliminado",
-        description: "El curso ha sido eliminado correctamente."
+        title: "Asignatura Eliminada",
+        description: "La asignatura ha sido eliminada correctamente."
     });
   };
 
-  const onSubmit = (values: z.infer<typeof courseFormSchema>) => {
-    if (!schoolId || !coursesRef) return;
-    if (editingCourse) {
-      const courseDocRef = doc(firestore, 'schools', schoolId, 'subjects', editingCourse.id);
-      updateDocumentNonBlocking(courseDocRef, values);
+  const onSubmit = (values: z.infer<typeof subjectFormSchema>) => {
+    if (!schoolId || !subjectsRef) return;
+    if (editingSubject) {
+      const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', editingSubject.id);
+      updateDocumentNonBlocking(subjectDocRef, values);
        toast({
-        title: "Curso Actualizado",
-        description: "La información del curso ha sido actualizada."
+        title: "Asignatura Actualizada",
+        description: "La información de la asignatura ha sido actualizada."
       });
     } else {
-      addDocumentNonBlocking(coursesRef, { ...values, schoolId, createdAt: serverTimestamp() });
+      addDocumentNonBlocking(subjectsRef, { ...values, schoolId, createdAt: serverTimestamp() });
        toast({
-        title: "Curso Creado",
-        description: "El nuevo curso ha sido creado correctamente."
+        title: "Asignatura Creada",
+        description: "La nueva asignatura ha sido creada correctamente."
       });
     }
     setIsDialogOpen(false);
-    setEditingCourse(null);
+    setEditingSubject(null);
   };
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-            <CardTitle>Gestión de Cursos/Asignaturas</CardTitle>
+            <CardTitle>Gestión de Asignaturas (Cursos)</CardTitle>
             <CardDescription>Crea y edita las materias que se impartirán.</CardDescription>
         </div>
         <Button onClick={handleCreateClick}>
             <PlusCircle className="mr-2 h-4 w-4" />
-            Crear Curso
+            Crear Asignatura
         </Button>
       </CardHeader>
       <CardContent>
         <Table>
             <TableHeader>
                 <TableRow>
-                <TableHead>Nombre del Curso</TableHead>
+                <TableHead>Nombre de la Asignatura</TableHead>
                 <TableHead>Fecha de Creación</TableHead>
                 <TableHead><span className="sr-only">Acciones</span></TableHead>
                 </TableRow>
@@ -178,26 +177,26 @@ function CoursesManager() {
             <TableBody>
                 {isLoading ? (
                 <TableRow><TableCell colSpan={3} className="text-center">Cargando...</TableCell></TableRow>
-                ) : courses && courses.length > 0 ? (
-                courses.map((course) => (
-                    <TableRow key={course.id}>
-                    <TableCell className="font-medium">{course.name}</TableCell>
-                    <TableCell>{course.createdAt ? new Date(course.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
+                ) : subjects && subjects.length > 0 ? (
+                subjects.map((subject) => (
+                    <TableRow key={subject.id}>
+                    <TableCell className="font-medium">{subject.name}</TableCell>
+                    <TableCell>{subject.createdAt ? new Date(subject.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditClick(course)}>Editar</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditClick(subject)}>Editar</DropdownMenuItem>
                             <AlertDialog>
                             <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
                                 <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente el curso.</AlertDialogDescription>
+                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la asignatura.</AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(course.id)}>Continuar</AlertDialogAction>
+                                <AlertDialogAction onClick={() => handleDelete(subject.id)}>Continuar</AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                             </AlertDialog>
@@ -207,7 +206,7 @@ function CoursesManager() {
                     </TableRow>
                 ))
                 ) : (
-                <TableRow><TableCell colSpan={3} className="text-center">No hay cursos registrados.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={3} className="text-center">No hay asignaturas registradas.</TableCell></TableRow>
                 )}
             </TableBody>
         </Table>
@@ -215,8 +214,8 @@ function CoursesManager() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-            <DialogTitle>{editingCourse ? 'Editar Curso' : 'Crear Nuevo Curso'}</DialogTitle>
-            <DialogDescription>{editingCourse ? 'Modifica el nombre del curso.' : 'Completa el nombre para crear un nuevo curso.'}</DialogDescription>
+            <DialogTitle>{editingSubject ? 'Editar Asignatura' : 'Crear Nueva Asignatura'}</DialogTitle>
+            <DialogDescription>{editingSubject ? 'Modifica el nombre de la asignatura.' : 'Completa el nombre para crear una nueva asignatura.'}</DialogDescription>
             </DialogHeader>
             <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
@@ -225,14 +224,14 @@ function CoursesManager() {
                 name="name"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Nombre del Curso</FormLabel>
+                    <FormLabel>Nombre de la Asignatura</FormLabel>
                     <FormControl><Input placeholder="Matemáticas Avanzadas" {...field} /></FormControl>
                     <FormMessage />
                     </FormItem>
                 )}
                 />
                 <DialogFooter>
-                <Button type="submit">{editingCourse ? 'Guardar Cambios' : 'Crear Curso'}</Button>
+                <Button type="submit">{editingSubject ? 'Guardar Cambios' : 'Crear Asignatura'}</Button>
                 </DialogFooter>
             </form>
             </Form>
@@ -417,202 +416,341 @@ interface SectionData {
   };
 }
 
+interface CourseData {
+    id: string;
+    subjectId: string;
+    sectionId: string;
+    teacherId: string;
+    schedule: string;
+}
+
+interface UserData {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role: Role;
+}
+
 const sectionFormSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
   gradeId: z.string({ required_error: 'Debes seleccionar un grado.' }).min(1, {message: 'Debes seleccionar un grado.'}),
 });
 
+const courseAssignmentFormSchema = z.object({
+    subjectId: z.string({ required_error: 'Debes seleccionar una asignatura.' }).min(1, {message: 'Debes seleccionar una asignatura.'}),
+    teacherId: z.string({ required_error: 'Debes seleccionar un profesor.' }).min(1, {message: 'Debes seleccionar un profesor.'}),
+    schedule: z.string().min(3, { message: 'El horario debe tener al menos 3 caracteres.' }),
+});
+
 function SectionsManager() {
-  const firestore = useFirestore();
-  const { user } = useUser();
-  
-  const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-  const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
-  const schoolId = userData?.schoolId;
+    const firestore = useFirestore();
+    const { user } = useUser();
+    
+    const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
+    const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
+    const schoolId = userData?.schoolId;
 
-  const sectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
-  const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
-  
-  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
-  const { data: grades, isLoading: isLoadingGrades } = useCollection<GradeData>(gradesRef);
+    // Data hooks
+    const sectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
+    const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
+    
+    const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
+    const { data: grades, isLoading: isLoadingGrades } = useCollection<GradeData>(gradesRef);
 
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [editingSection, setEditingSection] = React.useState<SectionData | null>(null);
+    const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
+    const { data: subjects, isLoading: isLoadingSubjects } = useCollection<SubjectData>(subjectsRef);
 
-  const form = useForm<z.infer<typeof sectionFormSchema>>({
-    resolver: zodResolver(sectionFormSchema),
-    defaultValues: { name: '', gradeId: '' },
-  });
+    const teachersQuery = useMemoFirebase(() => schoolId ? query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'teacher')) : null, [schoolId, firestore]);
+    const { data: teachers, isLoading: isLoadingTeachers } = useCollection<UserData>(teachersQuery);
 
-  React.useEffect(() => {
-    form.reset({ name: editingSection?.name || '', gradeId: editingSection?.gradeId || '' });
-  }, [editingSection, form]);
+    const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
+    const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
 
-  const handleEditClick = (section: SectionData) => {
-    setEditingSection(section);
-    setIsDialogOpen(true);
-  };
-
-  const handleCreateClick = () => {
-    setEditingSection(null);
-    setIsDialogOpen(true);
-  };
-
-  const handleDelete = (sectionId: string) => {
-    if (!schoolId) return;
-    const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', sectionId);
-    deleteDocumentNonBlocking(sectionDocRef);
-    toast({
-        title: "Sección Eliminada",
-        description: "La sección ha sido eliminada correctamente."
+    // State for dialogs
+    const [isSectionDialogOpen, setIsSectionDialogOpen] = React.useState(false);
+    const [editingSection, setEditingSection] = React.useState<SectionData | null>(null);
+    const [isCourseDialogOpen, setIsCourseDialogOpen] = React.useState(false);
+    const [managingCoursesForSection, setManagingCoursesForSection] = React.useState<SectionData | null>(null);
+    
+    // Forms
+    const sectionForm = useForm<z.infer<typeof sectionFormSchema>>({
+        resolver: zodResolver(sectionFormSchema),
+        defaultValues: { name: '', gradeId: '' },
     });
-  };
 
-  const onSubmit = (values: z.infer<typeof sectionFormSchema>) => {
-    if (!schoolId) return;
-    if (editingSection) {
-      const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', editingSection.id);
-      updateDocumentNonBlocking(sectionDocRef, values);
-       toast({
-        title: "Sección Actualizada",
-        description: "La información de la sección ha sido actualizada."
-      });
-    } else {
-      addDocumentNonBlocking(sectionsRef!, { ...values, schoolId, createdAt: serverTimestamp() });
-       toast({
-        title: "Sección Creada",
-        description: "La nueva sección ha sido creada correctamente."
-      });
+    const courseAssignmentForm = useForm<z.infer<typeof courseAssignmentFormSchema>>({
+        resolver: zodResolver(courseAssignmentFormSchema),
+        defaultValues: { subjectId: '', teacherId: '', schedule: '' },
+    });
+
+    // Effects
+    React.useEffect(() => {
+        sectionForm.reset({ name: editingSection?.name || '', gradeId: editingSection?.gradeId || '' });
+    }, [editingSection, sectionForm]);
+
+    // Handlers
+    const handleEditSectionClick = (section: SectionData) => {
+        setEditingSection(section);
+        setIsSectionDialogOpen(true);
+    };
+
+    const handleCreateSectionClick = () => {
+        setEditingSection(null);
+        setIsSectionDialogOpen(true);
+    };
+
+    const handleDeleteSection = (sectionId: string) => {
+        if (!schoolId) return;
+        const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', sectionId);
+        deleteDocumentNonBlocking(sectionDocRef);
+        toast({ title: "Sección Eliminada", description: "La sección ha sido eliminada correctamente." });
+    };
+
+    const onSectionSubmit = (values: z.infer<typeof sectionFormSchema>) => {
+        if (!schoolId) return;
+        if (editingSection) {
+            const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', editingSection.id);
+            updateDocumentNonBlocking(sectionDocRef, values);
+            toast({ title: "Sección Actualizada" });
+        } else {
+            addDocumentNonBlocking(sectionsRef!, { ...values, schoolId, createdAt: serverTimestamp() });
+            toast({ title: "Sección Creada" });
+        }
+        setIsSectionDialogOpen(false);
+        setEditingSection(null);
+    };
+
+    const handleManageCoursesClick = (section: SectionData) => {
+        setManagingCoursesForSection(section);
+        setIsCourseDialogOpen(true);
+    };
+
+    const onCourseAssignmentSubmit = (values: z.infer<typeof courseAssignmentFormSchema>) => {
+        if (!schoolId || !managingCoursesForSection || !coursesRef) return;
+        
+        addDocumentNonBlocking(coursesRef, {
+            ...values,
+            sectionId: managingCoursesForSection.id,
+            schoolId,
+            createdAt: serverTimestamp(),
+        });
+        toast({ title: "Curso Asignado", description: "El curso ha sido asignado a la sección." });
+        courseAssignmentForm.reset();
+    };
+    
+    const handleDeleteCourse = (courseId: string) => {
+        if (!schoolId) return;
+        const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', courseId);
+        deleteDocumentNonBlocking(courseDocRef);
+        toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección." });
     }
-    setIsDialogOpen(false);
-    setEditingSection(null);
-  };
-  
-  const gradesMap = React.useMemo(() => {
-    if (!grades) return {};
-    return grades.reduce((acc, grade) => {
-      acc[grade.id] = grade.name;
-      return acc;
-    }, {} as Record<string, string>);
-  }, [grades]);
 
+    // Memos for data mapping
+    const gradesMap = React.useMemo(() => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {}, [grades]);
+    const subjectsMap = React.useMemo(() => subjects?.reduce((acc, subject) => ({ ...acc, [subject.id]: subject.name }), {} as Record<string, string>) || {}, [subjects]);
+    const teachersMap = React.useMemo(() => teachers?.reduce((acc, teacher) => ({ ...acc, [teacher.id]: `${teacher.firstName} ${teacher.lastName}` }), {} as Record<string, string>) || {}, [teachers]);
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-            <CardTitle>Gestión de Secciones</CardTitle>
-            <CardDescription>Organiza los grupos de estudiantes dentro de cada grado.</CardDescription>
-        </div>
-        <Button onClick={handleCreateClick}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Crear Sección
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <Table>
-            <TableHeader>
-                <TableRow>
-                <TableHead>Nombre de la Sección</TableHead>
-                <TableHead>Grado</TableHead>
-                <TableHead>Fecha de Creación</TableHead>
-                <TableHead><span className="sr-only">Acciones</span></TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                {isLoadingSections ? (
-                <TableRow><TableCell colSpan={4} className="text-center">Cargando...</TableCell></TableRow>
-                ) : sections && sections.length > 0 ? (
-                sections.map((section) => (
-                    <TableRow key={section.id}>
-                    <TableCell className="font-medium">{section.name}</TableCell>
-                    <TableCell>{gradesMap[section.gradeId] || 'N/A'}</TableCell>
-                    <TableCell>{section.createdAt ? new Date(section.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditClick(section)}>Editar</DropdownMenuItem>
-                            <AlertDialog>
-                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la sección.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(section.id)}>Continuar</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                            </AlertDialog>
-                        </DropdownMenuContent>
-                        </DropdownMenu>
-                    </TableCell>
-                    </TableRow>
-                ))
-                ) : (
-                <TableRow><TableCell colSpan={4} className="text-center">No hay secciones registradas.</TableCell></TableRow>
-                )}
-            </TableBody>
-        </Table>
-      </CardContent>
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-            <DialogTitle>{editingSection ? 'Editar Sección' : 'Crear Nueva Sección'}</DialogTitle>
-            <DialogDescription>{editingSection ? 'Modifica los detalles de la sección.' : 'Completa los detalles para crear una nueva sección.'}</DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
-                <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Nombre de la Sección</FormLabel>
-                    <FormControl><Input placeholder="Sección A" {...field} /></FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="gradeId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Grado</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona un grado" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {isLoadingGrades ? (
-                            <SelectItem value="loading" disabled>Cargando grados...</SelectItem>
-                          ) : (
-                            grades?.map((grade) => (
-                              <SelectItem key={grade.id} value={grade.id}>
-                                {grade.name}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                <Button type="submit">{editingSection ? 'Guardar Cambios' : 'Crear Sección'}</Button>
-                </DialogFooter>
-            </form>
-            </Form>
-        </DialogContent>
-      </Dialog>
-    </Card>
-  );
+    const sectionCourses = React.useMemo(() => {
+        if (!managingCoursesForSection || !allCourses) return [];
+        return allCourses.filter(course => course.sectionId === managingCoursesForSection.id);
+    }, [managingCoursesForSection, allCourses]);
+
+    return (
+        <>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle>Gestión de Secciones</CardTitle>
+                        <CardDescription>Organiza los grupos de estudiantes dentro de cada grado.</CardDescription>
+                    </div>
+                    <Button onClick={handleCreateSectionClick}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Crear Sección
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Nombre</TableHead>
+                                <TableHead>Grado</TableHead>
+                                <TableHead>Fecha de Creación</TableHead>
+                                <TableHead className="text-right">Acciones</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoadingSections ? (
+                                <TableRow><TableCell colSpan={4} className="text-center">Cargando...</TableCell></TableRow>
+                            ) : sections && sections.length > 0 ? (
+                                sections.map((section) => (
+                                    <TableRow key={section.id}>
+                                        <TableCell className="font-medium">{section.name}</TableCell>
+                                        <TableCell>{gradesMap[section.gradeId] || 'N/A'}</TableCell>
+                                        <TableCell>{section.createdAt ? new Date(section.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="outline" size="sm" onClick={() => handleManageCoursesClick(section)} className="mr-2">
+                                                Administrar Cursos
+                                            </Button>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => handleEditSectionClick(section)}>Editar</DropdownMenuItem>
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                                                <AlertDialogDescription>Esta acción eliminará permanentemente la sección.</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => handleDeleteSection(section.id)}>Continuar</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow><TableCell colSpan={4} className="text-center">No hay secciones registradas.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            {/* Dialog for Creating/Editing Section */}
+            <Dialog open={isSectionDialogOpen} onOpenChange={setIsSectionDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>{editingSection ? 'Editar Sección' : 'Crear Nueva Sección'}</DialogTitle>
+                    </DialogHeader>
+                    <Form {...sectionForm}>
+                        <form onSubmit={sectionForm.handleSubmit(onSectionSubmit)} className="grid gap-4 py-4">
+                            <FormField control={sectionForm.control} name="name" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Nombre</FormLabel>
+                                    <FormControl><Input placeholder="Sección A" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                            <FormField control={sectionForm.control} name="gradeId" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Grado</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un grado" /></SelectTrigger></FormControl>
+                                        <SelectContent>
+                                            {grades?.map((grade) => <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                            <DialogFooter>
+                                <Button type="submit">{editingSection ? 'Guardar Cambios' : 'Crear Sección'}</Button>
+                            </DialogFooter>
+                        </form>
+                    </Form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Dialog for Managing Courses in Section */}
+            <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>
+                <DialogContent className="sm:max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Administrar Cursos para {managingCoursesForSection?.name}</DialogTitle>
+                        <DialogDescription>Asigna asignaturas, profesores y horarios a esta sección.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <h3 className="font-semibold mb-4">Asignar Nuevo Curso</h3>
+                            <Form {...courseAssignmentForm}>
+                                <form onSubmit={courseAssignmentForm.handleSubmit(onCourseAssignmentSubmit)} className="space-y-4">
+                                    <FormField control={courseAssignmentForm.control} name="subjectId" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Asignatura</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue placeholder="Selecciona asignatura" /></SelectTrigger></FormControl>
+                                                <SelectContent>
+                                                    {subjects?.map((subject) => <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={courseAssignmentForm.control} name="teacherId" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Profesor</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue placeholder="Selecciona profesor" /></SelectTrigger></FormControl>
+                                                <SelectContent>
+                                                    {teachers?.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={courseAssignmentForm.control} name="schedule" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Horario</FormLabel>
+                                            <FormControl><Input placeholder="Lunes 9:00 AM - 10:00 AM" {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <Button type="submit">Asignar Curso</Button>
+                                </form>
+                            </Form>
+                        </div>
+                        <div>
+                             <h3 className="font-semibold mb-4">Cursos Asignados</h3>
+                             <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Asignatura</TableHead>
+                                        <TableHead>Profesor</TableHead>
+                                        <TableHead>Horario</TableHead>
+                                        <TableHead><span className="sr-only">Acciones</span></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {isLoadingCourses ? (
+                                         <TableRow><TableCell colSpan={4} className="text-center">Cargando...</TableCell></TableRow>
+                                    ) : sectionCourses.length > 0 ? (
+                                        sectionCourses.map(course => (
+                                            <TableRow key={course.id}>
+                                                <TableCell>{subjectsMap[course.subjectId] || 'N/A'}</TableCell>
+                                                <TableCell>{teachersMap[course.teacherId] || 'N/A'}</TableCell>
+                                                <TableCell>{course.schedule}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild><Button variant="destructive" size="sm">Eliminar</Button></AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>¿Seguro?</AlertDialogTitle>
+                                                                <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => handleDeleteCourse(course.id)}>Eliminar</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow><TableCell colSpan={4} className="text-center">No hay cursos asignados.</TableCell></TableRow>
+                                    )}
+                                </TableBody>
+                             </Table>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
 }
 
 export default function AcademicsPage() {
