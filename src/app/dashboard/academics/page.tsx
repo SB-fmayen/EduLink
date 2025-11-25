@@ -157,12 +157,12 @@ function CoursesManager() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-            <CardTitle>Gestión de Asignaturas (Cursos)</CardTitle>
+            <CardTitle>Gestión de Cursos (Asignaturas)</CardTitle>
             <CardDescription>Crea y edita las materias que se impartirán.</CardDescription>
         </div>
         <Button onClick={handleCreateClick}>
             <PlusCircle className="mr-2 h-4 w-4" />
-            Crear Asignatura
+            Crear Curso
         </Button>
       </CardHeader>
       <CardContent>
@@ -214,8 +214,8 @@ function CoursesManager() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-            <DialogTitle>{editingSubject ? 'Editar Asignatura' : 'Crear Nueva Asignatura'}</DialogTitle>
-            <DialogDescription>{editingSubject ? 'Modifica el nombre de la asignatura.' : 'Completa el nombre para crear una nueva asignatura.'}</DialogDescription>
+            <DialogTitle>{editingSubject ? 'Editar Curso' : 'Crear Nuevo Curso'}</DialogTitle>
+            <DialogDescription>{editingSubject ? 'Modifica el nombre del curso.' : 'Completa el nombre para crear un nuevo curso.'}</DialogDescription>
             </DialogHeader>
             <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
@@ -224,14 +224,14 @@ function CoursesManager() {
                 name="name"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Nombre de la Asignatura</FormLabel>
+                    <FormLabel>Nombre del Curso</FormLabel>
                     <FormControl><Input placeholder="Matemáticas Avanzadas" {...field} /></FormControl>
                     <FormMessage />
                     </FormItem>
                 )}
                 />
                 <DialogFooter>
-                <Button type="submit">{editingSubject ? 'Guardar Cambios' : 'Crear Asignatura'}</Button>
+                <Button type="submit">{editingSubject ? 'Guardar Cambios' : 'Crear Curso'}</Button>
                 </DialogFooter>
             </form>
             </Form>
@@ -471,6 +471,7 @@ function SectionsManager() {
     const [editingSection, setEditingSection] = React.useState<SectionData | null>(null);
     const [isCourseDialogOpen, setIsCourseDialogOpen] = React.useState(false);
     const [managingCoursesForSection, setManagingCoursesForSection] = React.useState<SectionData | null>(null);
+    const [editingCourse, setEditingCourse] = React.useState<CourseData | null>(null);
     
     // Forms
     const sectionForm = useForm<z.infer<typeof sectionFormSchema>>({
@@ -487,6 +488,19 @@ function SectionsManager() {
     React.useEffect(() => {
         sectionForm.reset({ name: editingSection?.name || '', gradeId: editingSection?.gradeId || '' });
     }, [editingSection, sectionForm]);
+
+    React.useEffect(() => {
+        if (editingCourse) {
+            courseAssignmentForm.reset({
+                subjectId: editingCourse.subjectId,
+                teacherId: editingCourse.teacherId,
+                schedule: editingCourse.schedule,
+            });
+        } else {
+            courseAssignmentForm.reset({ subjectId: '', teacherId: '', schedule: '' });
+        }
+    }, [editingCourse, courseAssignmentForm]);
+
 
     // Handlers
     const handleEditSectionClick = (section: SectionData) => {
@@ -523,19 +537,28 @@ function SectionsManager() {
     const handleManageCoursesClick = (section: SectionData) => {
         setManagingCoursesForSection(section);
         setIsCourseDialogOpen(true);
+        setEditingCourse(null);
     };
 
     const onCourseAssignmentSubmit = (values: z.infer<typeof courseAssignmentFormSchema>) => {
         if (!schoolId || !managingCoursesForSection || !coursesRef) return;
         
-        addDocumentNonBlocking(coursesRef, {
-            ...values,
-            sectionId: managingCoursesForSection.id,
-            schoolId,
-            createdAt: serverTimestamp(),
-        });
-        toast({ title: "Curso Asignado", description: "El curso ha sido asignado a la sección." });
+        if (editingCourse) {
+            const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', editingCourse.id);
+            updateDocumentNonBlocking(courseDocRef, values);
+            toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
+
+        } else {
+            addDocumentNonBlocking(coursesRef, {
+                ...values,
+                sectionId: managingCoursesForSection.id,
+                schoolId,
+                createdAt: serverTimestamp(),
+            });
+            toast({ title: "Curso Asignado", description: "El curso ha sido asignado a la sección." });
+        }
         courseAssignmentForm.reset();
+        setEditingCourse(null);
     };
     
     const handleDeleteCourse = (courseId: string) => {
@@ -544,6 +567,15 @@ function SectionsManager() {
         deleteDocumentNonBlocking(courseDocRef);
         toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección." });
     }
+
+    const handleEditCourseClick = (course: CourseData) => {
+        setEditingCourse(course);
+    };
+    
+    const handleCancelEdit = () => {
+        setEditingCourse(null);
+        courseAssignmentForm.reset({ subjectId: '', teacherId: '', schedule: '' });
+    };
 
     // Memos for data mapping
     const gradesMap = React.useMemo(() => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {}, [grades]);
@@ -657,7 +689,7 @@ function SectionsManager() {
             </Dialog>
 
             {/* Dialog for Managing Courses in Section */}
-            <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>
+            <Dialog open={isCourseDialogOpen} onOpenChange={(isOpen) => { setIsCourseDialogOpen(isOpen); if (!isOpen) setEditingCourse(null); }}>
                 <DialogContent className="sm:max-w-4xl">
                     <DialogHeader>
                         <DialogTitle>Administrar Cursos para {managingCoursesForSection?.name}</DialogTitle>
@@ -665,13 +697,13 @@ function SectionsManager() {
                     </DialogHeader>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <h3 className="font-semibold mb-4">Asignar Nuevo Curso</h3>
+                            <h3 className="font-semibold mb-4">{editingCourse ? 'Editar Asignación' : 'Asignar Nuevo Curso'}</h3>
                             <Form {...courseAssignmentForm}>
                                 <form onSubmit={courseAssignmentForm.handleSubmit(onCourseAssignmentSubmit)} className="space-y-4">
                                     <FormField control={courseAssignmentForm.control} name="subjectId" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Asignatura</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <Select onValueChange={field.onChange} value={field.value}>
                                                 <FormControl><SelectTrigger><SelectValue placeholder="Selecciona asignatura" /></SelectTrigger></FormControl>
                                                 <SelectContent>
                                                     {subjects?.map((subject) => <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>)}
@@ -683,7 +715,7 @@ function SectionsManager() {
                                     <FormField control={courseAssignmentForm.control} name="teacherId" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Profesor</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <Select onValueChange={field.onChange} value={field.value}>
                                                 <FormControl><SelectTrigger><SelectValue placeholder="Selecciona profesor" /></SelectTrigger></FormControl>
                                                 <SelectContent>
                                                     {teachers?.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</SelectItem>)}
@@ -699,7 +731,10 @@ function SectionsManager() {
                                             <FormMessage />
                                         </FormItem>
                                     )} />
-                                    <Button type="submit">Asignar Curso</Button>
+                                    <div className="flex gap-2">
+                                        <Button type="submit">{editingCourse ? 'Guardar Cambios' : 'Asignar Curso'}</Button>
+                                        {editingCourse && <Button variant="ghost" onClick={handleCancelEdit}>Cancelar</Button>}
+                                    </div>
                                 </form>
                             </Form>
                         </div>
@@ -724,19 +759,27 @@ function SectionsManager() {
                                                 <TableCell>{teachersMap[course.teacherId] || 'N/A'}</TableCell>
                                                 <TableCell>{course.schedule}</TableCell>
                                                 <TableCell className="text-right">
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild><Button variant="destructive" size="sm">Eliminar</Button></AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>¿Seguro?</AlertDialogTitle>
-                                                                <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleDeleteCourse(course.id)}>Eliminar</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem onClick={() => handleEditCourseClick(course)}>Editar</DropdownMenuItem>
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle>¿Seguro?</AlertDialogTitle>
+                                                                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+                                                                    <AlertDialogFooter>
+                                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                        <AlertDialogAction onClick={() => handleDeleteCourse(course.id)}>Eliminar</AlertDialogAction>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </TableCell>
                                             </TableRow>
                                         ))
@@ -785,5 +828,7 @@ export default function AcademicsPage() {
     </div>
   );
 }
+
+    
 
     
