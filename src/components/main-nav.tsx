@@ -2,54 +2,56 @@
 
 import * as React from 'react';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutDashboard,
-  School,
-  Users,
-  GraduationCap,
-  BookOpen,
-  Banknote,
-  MessageSquare,
-  ClipboardList,
-  Settings,
-} from 'lucide-react';
+import * as Icons from 'lucide-react';
 import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
+import { useDoc } from '@/firebase';
+import { useUser } from '@/firebase';
+import { doc } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
+import { menuItems, NavItem } from '@/lib/roles';
+import { useMemoFirebase } from '@/firebase';
 
-const menuItems = [
-  { href: '/dashboard', label: 'Panel', icon: LayoutDashboard },
-  { href: '/dashboard/schools', label: 'Escuelas', icon: School },
-  { href: '/dashboard/academics', label: 'Académico', icon: BookOpen },
-  { href: '/dashboard/students', label: 'Estudiantes', icon: Users },
-  { href: '/dashboard/teachers', label: 'Profesores', icon: GraduationCap },
-  { href: '/dashboard/grades', label: 'Calificaciones', icon: ClipboardList },
-  { href: '/dashboard/finances', label: 'Finanzas', icon: Banknote },
-  { href: '/dashboard/communication', label: 'Comunicación', icon: MessageSquare },
-  { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
-];
 
 export function MainNav() {
   const pathname = usePathname();
+  const { user } = useUser();
+  const firestore = useFirestore();
+
+  const userDocRef = useMemoFirebase(() => {
+    if (!user) return null;
+    return doc(firestore, `users/${user.uid}`);
+  }, [user, firestore]);
+  
+  const { data: userData } = useDoc<{ role: string }>(userDocRef);
+  const userRole = userData?.role;
+
+  const accessibleMenuItems = menuItems.filter(item => 
+    userRole && item.roles.includes(userRole as any)
+  );
 
   return (
     <SidebarMenu>
-      {menuItems.map((item) => (
-        <SidebarMenuItem key={item.href}>
-          <SidebarMenuButton
-            asChild
-            isActive={pathname === item.href}
-            tooltip={item.label}
-          >
-            <a href={item.href}>
-              <item.icon />
-              <span>{item.label}</span>
-            </a>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
+      {accessibleMenuItems.map((item) => {
+        const Icon = (Icons as any)[item.icon];
+        return (
+          <SidebarMenuItem key={item.href}>
+            <SidebarMenuButton
+              asChild
+              isActive={pathname === item.href}
+              tooltip={item.label}
+            >
+              <a href={item.href}>
+                {Icon && <Icon />}
+                <span>{item.label}</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        );
+      })}
     </SidebarMenu>
   );
 }
