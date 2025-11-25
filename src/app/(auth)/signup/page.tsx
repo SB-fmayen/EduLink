@@ -21,28 +21,25 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/firebase';
 import { initiateEmailSignUp } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
+import { doc, setDoc } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { User } from 'firebase/auth';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Invalid email address.' }),
-  role: z.string({ required_error: 'Please select a role.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
 });
 
 
 export default function SignupPage() {
   const auth = useAuth();
+  const firestore = useFirestore();
   const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -56,7 +53,22 @@ export default function SignupPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
      try {
-      initiateEmailSignUp(auth, values.email, values.password);
+      initiateEmailSignUp(auth, values.email, values.password, (user: User) => {
+        if(user) {
+           const [firstName, ...lastNameParts] = values.fullName.split(' ');
+            const lastName = lastNameParts.join(' ');
+
+            const userRef = doc(firestore, 'users', user.uid);
+            setDocumentNonBlocking(userRef, {
+              id: user.uid,
+              firstName: firstName,
+              lastName: lastName,
+              email: values.email,
+              role: 'student', // Default role
+              schoolId: 'default-school-id', // Assign a default or null schoolId
+            }, { merge: true });
+        }
+      });
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -102,29 +114,6 @@ export default function SignupPage() {
                   <FormControl>
                     <Input placeholder="m@example.com" {...field} />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-             <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Role</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a role" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="admin">Administrator</SelectItem>
-                      <SelectItem value="teacher">Teacher</SelectItem>
-                      <SelectItem value="parent">Parent</SelectItem>
-                      <SelectItem value="student">Student</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
