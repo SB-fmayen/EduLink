@@ -1,7 +1,7 @@
 
 'use client';
 
-import { Book, GraduationCap, Users, Component, MoreHorizontal, PlusCircle } from 'lucide-react';
+import { Book, GraduationCap, Users } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -74,9 +74,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Role } from '@/lib/roles';
+import { MoreHorizontal, PlusCircle } from 'lucide-react';
 
 
-interface SubjectData {
+// Componente para la gestión de Cursos (Asignaturas)
+interface CourseData {
   id: string;
   name: string;
   createdAt?: {
@@ -84,12 +86,11 @@ interface SubjectData {
   };
 }
 
-const subjectFormSchema = z.object({
+const courseFormSchema = z.object({
   name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
 });
 
-// Componente para la gestión de asignaturas
-function SubjectsManager() {
+function CoursesManager() {
   const firestore = useFirestore();
   const { user } = useUser();
   
@@ -97,78 +98,79 @@ function SubjectsManager() {
   const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
   const schoolId = userData?.schoolId;
 
-  const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
-  const { data: subjects, isLoading } = useCollection<SubjectData>(subjectsRef);
+  // En el nuevo flujo, los "Cursos" son en realidad las "Asignaturas" (Subjects)
+  const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
+  const { data: courses, isLoading } = useCollection<CourseData>(coursesRef);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [editingSubject, setEditingSubject] = React.useState<SubjectData | null>(null);
+  const [editingCourse, setEditingCourse] = React.useState<CourseData | null>(null);
 
-  const form = useForm<z.infer<typeof subjectFormSchema>>({
-    resolver: zodResolver(subjectFormSchema),
+  const form = useForm<z.infer<typeof courseFormSchema>>({
+    resolver: zodResolver(courseFormSchema),
     defaultValues: { name: '' },
   });
 
   React.useEffect(() => {
-    form.reset({ name: editingSubject?.name || '' });
-  }, [editingSubject, form]);
+    form.reset({ name: editingCourse?.name || '' });
+  }, [editingCourse, form]);
 
-  const handleEditClick = (subject: SubjectData) => {
-    setEditingSubject(subject);
+  const handleEditClick = (course: CourseData) => {
+    setEditingCourse(course);
     setIsDialogOpen(true);
   };
 
   const handleCreateClick = () => {
-    setEditingSubject(null);
+    setEditingCourse(null);
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (subjectId: string) => {
+  const handleDelete = (courseId: string) => {
     if (!schoolId) return;
-    const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', subjectId);
-    deleteDocumentNonBlocking(subjectDocRef);
+    const courseDocRef = doc(firestore, 'schools', schoolId, 'subjects', courseId);
+    deleteDocumentNonBlocking(courseDocRef);
     toast({
-        title: "Asignatura Eliminada",
-        description: "La asignatura ha sido eliminada correctamente."
+        title: "Curso Eliminado",
+        description: "El curso ha sido eliminado correctamente."
     });
   };
 
-  const onSubmit = (values: z.infer<typeof subjectFormSchema>) => {
-    if (!schoolId) return;
-    if (editingSubject) {
-      const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', editingSubject.id);
-      updateDocumentNonBlocking(subjectDocRef, values);
+  const onSubmit = (values: z.infer<typeof courseFormSchema>) => {
+    if (!schoolId || !coursesRef) return;
+    if (editingCourse) {
+      const courseDocRef = doc(firestore, 'schools', schoolId, 'subjects', editingCourse.id);
+      updateDocumentNonBlocking(courseDocRef, values);
        toast({
-        title: "Asignatura Actualizada",
-        description: "La información de la asignatura ha sido actualizada."
+        title: "Curso Actualizado",
+        description: "La información del curso ha sido actualizada."
       });
     } else {
-      addDocumentNonBlocking(subjectsRef!, { ...values, schoolId, createdAt: serverTimestamp() });
+      addDocumentNonBlocking(coursesRef, { ...values, schoolId, createdAt: serverTimestamp() });
        toast({
-        title: "Asignatura Creada",
-        description: "La nueva asignatura ha sido creada correctamente."
+        title: "Curso Creado",
+        description: "El nuevo curso ha sido creado correctamente."
       });
     }
     setIsDialogOpen(false);
-    setEditingSubject(null);
+    setEditingCourse(null);
   };
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-            <CardTitle>Gestión de Asignaturas</CardTitle>
-            <CardDescription>Crea, edita y elimina las asignaturas que se imparten.</CardDescription>
+            <CardTitle>Gestión de Cursos/Asignaturas</CardTitle>
+            <CardDescription>Crea y edita las materias que se impartirán.</CardDescription>
         </div>
         <Button onClick={handleCreateClick}>
             <PlusCircle className="mr-2 h-4 w-4" />
-            Crear Asignatura
+            Crear Curso
         </Button>
       </CardHeader>
       <CardContent>
         <Table>
             <TableHeader>
                 <TableRow>
-                <TableHead>Nombre de la Asignatura</TableHead>
+                <TableHead>Nombre del Curso</TableHead>
                 <TableHead>Fecha de Creación</TableHead>
                 <TableHead><span className="sr-only">Acciones</span></TableHead>
                 </TableRow>
@@ -176,26 +178,26 @@ function SubjectsManager() {
             <TableBody>
                 {isLoading ? (
                 <TableRow><TableCell colSpan={3} className="text-center">Cargando...</TableCell></TableRow>
-                ) : subjects && subjects.length > 0 ? (
-                subjects.map((subject) => (
-                    <TableRow key={subject.id}>
-                    <TableCell className="font-medium">{subject.name}</TableCell>
-                    <TableCell>{subject.createdAt ? new Date(subject.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
+                ) : courses && courses.length > 0 ? (
+                courses.map((course) => (
+                    <TableRow key={course.id}>
+                    <TableCell className="font-medium">{course.name}</TableCell>
+                    <TableCell>{course.createdAt ? new Date(course.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditClick(subject)}>Editar</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditClick(course)}>Editar</DropdownMenuItem>
                             <AlertDialog>
                             <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
                                 <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la asignatura.</AlertDialogDescription>
+                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente el curso.</AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(subject.id)}>Continuar</AlertDialogAction>
+                                <AlertDialogAction onClick={() => handleDelete(course.id)}>Continuar</AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                             </AlertDialog>
@@ -205,7 +207,7 @@ function SubjectsManager() {
                     </TableRow>
                 ))
                 ) : (
-                <TableRow><TableCell colSpan={3} className="text-center">No hay asignaturas registradas.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={3} className="text-center">No hay cursos registrados.</TableCell></TableRow>
                 )}
             </TableBody>
         </Table>
@@ -213,8 +215,8 @@ function SubjectsManager() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-            <DialogTitle>{editingSubject ? 'Editar Asignatura' : 'Crear Nueva Asignatura'}</DialogTitle>
-            <DialogDescription>{editingSubject ? 'Modifica el nombre de la asignatura.' : 'Completa el nombre para crear una nueva asignatura.'}</DialogDescription>
+            <DialogTitle>{editingCourse ? 'Editar Curso' : 'Crear Nuevo Curso'}</DialogTitle>
+            <DialogDescription>{editingCourse ? 'Modifica el nombre del curso.' : 'Completa el nombre para crear un nuevo curso.'}</DialogDescription>
             </DialogHeader>
             <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
@@ -223,14 +225,14 @@ function SubjectsManager() {
                 name="name"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Nombre de la Asignatura</FormLabel>
-                    <FormControl><Input placeholder="Matemáticas" {...field} /></FormControl>
+                    <FormLabel>Nombre del Curso</FormLabel>
+                    <FormControl><Input placeholder="Matemáticas Avanzadas" {...field} /></FormControl>
                     <FormMessage />
                     </FormItem>
                 )}
                 />
                 <DialogFooter>
-                <Button type="submit">{editingSubject ? 'Guardar Cambios' : 'Crear Asignatura'}</Button>
+                <Button type="submit">{editingCourse ? 'Guardar Cambios' : 'Crear Curso'}</Button>
                 </DialogFooter>
             </form>
             </Form>
@@ -239,6 +241,7 @@ function SubjectsManager() {
     </Card>
   );
 }
+
 
 // Componente para la gestión de grados
 interface GradeData {
@@ -612,235 +615,15 @@ function SectionsManager() {
   );
 }
 
-// Componente para la gestión de cursos
-interface CourseData {
-  id: string;
-  subjectId: string;
-  sectionId: string;
-  teacherId: string;
-  schedule: string;
-  createdAt?: {
-    toDate: () => Date;
-  };
-}
-
-interface UserData {
-  id: string;
-  firstName: string;
-  lastName: string;
-  role: Role;
-}
-
-const courseFormSchema = z.object({
-  subjectId: z.string({ required_error: 'Debes seleccionar una asignatura.' }).min(1, { message: 'Debes seleccionar una asignatura.' }),
-  sectionId: z.string({ required_error: 'Debes seleccionar una sección.' }).min(1, { message: 'Debes seleccionar una sección.' }),
-  teacherId: z.string({ required_error: 'Debes seleccionar un profesor.' }).min(1, { message: 'Debes seleccionar un profesor.' }),
-  schedule: z.string().min(3, { message: 'El horario debe tener al menos 3 caracteres.' }),
-});
-
-function CoursesManager() {
-  const firestore = useFirestore();
-  const { user } = useUser();
-
-  const userDocRef = useMemoFirebase(() => (user ? doc(firestore, `users/${user.uid}`) : null), [user, firestore]);
-  const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
-  const schoolId = userData?.schoolId;
-
-  // Fetching data
-  const coursesRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null), [schoolId, firestore]);
-  const { data: courses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
-
-  const subjectsRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null), [schoolId, firestore]);
-  const { data: subjects, isLoading: isLoadingSubjects } = useCollection<SubjectData>(subjectsRef);
-
-  const sectionsRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null), [schoolId, firestore]);
-  const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
-  
-  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
-  const { data: grades } = useCollection<GradeData>(gradesRef);
-
-  const usersRef = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
-  const teachersQuery = useMemoFirebase(() => query(usersRef, where('role', '==', 'teacher')), [usersRef]);
-  const { data: teachers, isLoading: isLoadingTeachers } = useCollection<UserData>(teachersQuery);
-
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [editingCourse, setEditingCourse] = React.useState<CourseData | null>(null);
-  
-  const form = useForm<z.infer<typeof courseFormSchema>>({
-    resolver: zodResolver(courseFormSchema),
-    defaultValues: { subjectId: '', sectionId: '', teacherId: '', schedule: '' },
-  });
-
-  React.useEffect(() => {
-    form.reset(editingCourse || { subjectId: '', sectionId: '', teacherId: '', schedule: '' });
-  }, [editingCourse, form]);
-
-  // Click Handlers
-  const handleEditClick = (course: CourseData) => {
-    setEditingCourse(course);
-    setIsDialogOpen(true);
-  };
-  const handleCreateClick = () => {
-    setEditingCourse(null);
-    setIsDialogOpen(true);
-  };
-  const handleDelete = (courseId: string) => {
-    if (!schoolId) return;
-    const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', courseId);
-    deleteDocumentNonBlocking(courseDocRef);
-    toast({ title: 'Curso Eliminado', description: 'El curso ha sido eliminado correctamente.' });
-  };
-  
-  const onSubmit = (values: z.infer<typeof courseFormSchema>) => {
-    if (!schoolId || !coursesRef) return;
-    if (editingCourse) {
-      const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', editingCourse.id);
-      updateDocumentNonBlocking(courseDocRef, values);
-      toast({ title: 'Curso Actualizado', description: 'La información del curso ha sido actualizada.' });
-    } else {
-      addDocumentNonBlocking(coursesRef, { ...values, schoolId, createdAt: serverTimestamp() });
-      toast({ title: 'Curso Creado', description: 'El nuevo curso ha sido creado correctamente.' });
-    }
-    setIsDialogOpen(false);
-    setEditingCourse(null);
-  };
-
-  // Data mapping for display
-  const subjectsMap = React.useMemo(() => subjects?.reduce((acc, s) => ({ ...acc, [s.id]: s.name }), {} as Record<string, string>) || {}, [subjects]);
-  const teachersMap = React.useMemo(() => teachers?.reduce((acc, t) => ({ ...acc, [t.id]: `${t.firstName} ${t.lastName}` }), {} as Record<string, string>) || {}, [teachers]);
-  const gradesMap = React.useMemo(() => grades?.reduce((acc, g) => ({ ...acc, [g.id]: g.name }), {} as Record<string, string>) || {}, [grades]);
-  const sectionsMap = React.useMemo(() => sections?.reduce((acc, s) => ({ ...acc, [s.id]: { name: s.name, gradeId: s.gradeId } }), {} as Record<string, {name: string, gradeId: string}>) || {}, [sections]);
-
-  const isLoading = isLoadingCourses || isLoadingSubjects || isLoadingSections || isLoadingTeachers;
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Gestión de Cursos</CardTitle>
-          <CardDescription>Asigna materias, profesores y horarios a cada sección.</CardDescription>
-        </div>
-        <Button onClick={handleCreateClick}><PlusCircle className="mr-2 h-4 w-4" /> Crear Curso</Button>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Asignatura</TableHead>
-              <TableHead>Sección</TableHead>
-              <TableHead>Profesor</TableHead>
-              <TableHead>Horario</TableHead>
-              <TableHead><span className="sr-only">Acciones</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="text-center">Cargando...</TableCell></TableRow>
-            ) : courses && courses.length > 0 ? (
-              courses.map((course) => {
-                const sectionInfo = sectionsMap[course.sectionId];
-                const gradeName = sectionInfo ? gradesMap[sectionInfo.gradeId] : '';
-                return (
-                    <TableRow key={course.id}>
-                    <TableCell className="font-medium">{subjectsMap[course.subjectId] || 'N/A'}</TableCell>
-                    <TableCell>{sectionInfo ? `${gradeName} - ${sectionInfo.name}`: 'N/A'}</TableCell>
-                    <TableCell>{teachersMap[course.teacherId] || 'N/A'}</TableCell>
-                    <TableCell>{course.schedule}</TableCell>
-                    <TableCell className="text-right">
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditClick(course)}>Editar</DropdownMenuItem>
-                            <AlertDialog>
-                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente el curso.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(course.id)}>Continuar</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                            </AlertDialog>
-                        </DropdownMenuContent>
-                        </DropdownMenu>
-                    </TableCell>
-                    </TableRow>
-                )
-              })
-            ) : (
-              <TableRow><TableCell colSpan={5} className="text-center">No hay cursos registrados.</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-                <DialogTitle>{editingCourse ? 'Editar Curso' : 'Crear Nuevo Curso'}</DialogTitle>
-                <DialogDescription>Completa los detalles para configurar el curso.</DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
-                <FormField control={form.control} name="subjectId" render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Asignatura</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una asignatura" /></SelectTrigger></FormControl>
-                        <SelectContent>{subjects?.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                )} />
-                <FormField control={form.control} name="sectionId" render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Sección</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una sección" /></SelectTrigger></FormControl>
-                        <SelectContent>{sections?.map((s) => (<SelectItem key={s.id} value={s.id}>{gradesMap[s.gradeId]} - {s.name}</SelectItem>))}</SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                )} />
-                <FormField control={form.control} name="teacherId" render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Profesor</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un profesor" /></SelectTrigger></FormControl>
-                        <SelectContent>{teachers?.map((t) => (<SelectItem key={t.id} value={t.id}>{t.firstName} {t.lastName}</SelectItem>))}</SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                )} />
-                <FormField control={form.control} name="schedule" render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Horario</FormLabel>
-                        <FormControl><Input placeholder="Lunes 9-10am" {...field} /></FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )} />
-                <DialogFooter>
-                    <Button type="submit">{editingCourse ? 'Guardar Cambios' : 'Crear Curso'}</Button>
-                </DialogFooter>
-            </form>
-            </Form>
-        </DialogContent>
-      </Dialog>
-    </Card>
-  );
-}
-
 export default function AcademicsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold tracking-tight">Gestión Académica</h1>
-      <Tabs defaultValue="subjects">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="subjects">
+      <Tabs defaultValue="courses">
+        <TabsList className="grid w-full grid-cols-3">
+           <TabsTrigger value="courses">
             <Book className="mr-2 h-4 w-4" />
-            Asignaturas
+            Cursos
           </TabsTrigger>
           <TabsTrigger value="grades">
             <GraduationCap className="mr-2 h-4 w-4" />
@@ -850,13 +633,9 @@ export default function AcademicsPage() {
             <Users className="mr-2 h-4 w-4" />
             Secciones
           </TabsTrigger>
-          <TabsTrigger value="courses">
-            <Component className="mr-2 h-4 w-4" />
-            Cursos
-          </TabsTrigger>
         </TabsList>
-        <TabsContent value="subjects">
-            <SubjectsManager />
+        <TabsContent value="courses">
+            <CoursesManager />
         </TabsContent>
         <TabsContent value="grades">
           <GradesManager />
@@ -864,10 +643,9 @@ export default function AcademicsPage() {
         <TabsContent value="sections">
           <SectionsManager />
         </TabsContent>
-        <TabsContent value="courses">
-          <CoursesManager />
-        </TabsContent>
       </Tabs>
     </div>
   );
 }
+
+    
