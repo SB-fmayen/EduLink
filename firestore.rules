@@ -28,11 +28,11 @@ service cloud.firestore {
     }
 
     /**
-     * Returns true if the user is a global administrator.
-     * Checks for the existence of the user's UID in the `roles_admin` collection.
+     * Returns true if the user has the 'admin' role in their user document.
      */
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn() && userProfile.data.role == 'admin';
     }
 
     /**
@@ -104,7 +104,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if false;
+      allow list: if isAdmin();
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
@@ -165,10 +165,6 @@ service cloud.firestore {
       allow list: if false;
       allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
       allow update, delete: if isOwner(resource.data.senderId) && resource != null;
-    }
-
-    match /roles_admin/{userId} {
-      allow read, write: if isAdmin();
     }
   }
 }
