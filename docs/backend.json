@@ -1,0 +1,886 @@
+{
+  "entities": {
+    "School": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "School",
+      "type": "object",
+      "description": "Represents a school within the system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the School entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the school."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address of the school."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user in the system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "First name of the user."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Last name of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "Role of the user (Admin, Teacher, Parent, Student)."
+        },
+        "schoolId": {
+          "type": "string",
+          "description": "Reference to School. (Relationship: School 1:N User)"
+        }
+      },
+      "required": [
+        "id",
+        "firstName",
+        "lastName",
+        "email",
+        "role",
+        "schoolId"
+      ]
+    },
+    "Grade": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Grade",
+      "type": "object",
+      "description": "Represents a grade level within a school.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Grade entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the grade (e.g., 1st Grade, 2nd Grade)."
+        },
+        "schoolId": {
+          "type": "string",
+          "description": "Reference to School. (Relationship: School 1:N Grade)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "schoolId"
+      ]
+    },
+    "Section": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Section",
+      "type": "object",
+      "description": "Represents a section within a grade.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Section entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the section (e.g., A, B, C)."
+        },
+        "gradeId": {
+          "type": "string",
+          "description": "Reference to Grade. (Relationship: Grade 1:N Section)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "gradeId"
+      ]
+    },
+    "Subject": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Subject",
+      "type": "object",
+      "description": "Represents a subject taught in the school.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Subject entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the subject (e.g., Math, Science)."
+        },
+        "schoolId": {
+          "type": "string",
+          "description": "Reference to School. (Relationship: School 1:N Subject)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "schoolId"
+      ]
+    },
+    "Course": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Course",
+      "type": "object",
+      "description": "Represents a course offered, linking a subject to a specific section and teacher.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Course entity."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Reference to Subject. (Relationship: Subject 1:N Course)"
+        },
+        "sectionId": {
+          "type": "string",
+          "description": "Reference to Section. (Relationship: Section 1:N Course)"
+        },
+        "teacherId": {
+          "type": "string",
+          "description": "Reference to User (Teacher). (Relationship: User 1:N Course)"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Schedule of the course (e.g., 'Monday 9:00 AM - 10:00 AM')."
+        }
+      },
+      "required": [
+        "id",
+        "subjectId",
+        "sectionId",
+        "teacherId",
+        "schedule"
+      ]
+    },
+    "StudentCourse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StudentCourse",
+      "type": "object",
+      "description": "Links students to courses they are enrolled in.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the StudentCourse entity."
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Reference to User (Student). (Relationship: User N:N Course)"
+        },
+        "courseId": {
+          "type": "string",
+          "description": "Reference to Course. (Relationship: Course N:N User)"
+        }
+      },
+      "required": [
+        "id",
+        "studentId",
+        "courseId"
+      ]
+    },
+    "Attendance": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Attendance",
+      "type": "object",
+      "description": "Records student attendance for a specific course.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Attendance entity."
+        },
+        "studentCourseId": {
+          "type": "string",
+          "description": "Reference to StudentCourse. (Relationship: StudentCourse 1:N Attendance)"
+        },
+        "date": {
+          "type": "string",
+          "description": "Date of the attendance record.",
+          "format": "date-time"
+        },
+        "isPresent": {
+          "type": "boolean",
+          "description": "Indicates if the student was present (true) or absent (false)."
+        }
+      },
+      "required": [
+        "id",
+        "studentCourseId",
+        "date",
+        "isPresent"
+      ]
+    },
+    "GradeRecord": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "GradeRecord",
+      "type": "object",
+      "description": "Stores individual grades for students in a course.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the GradeRecord entity."
+        },
+        "studentCourseId": {
+          "type": "string",
+          "description": "Reference to StudentCourse. (Relationship: StudentCourse 1:N GradeRecord)"
+        },
+        "grade": {
+          "type": "number",
+          "description": "The grade received by the student for a specific assessment."
+        },
+        "assessmentType": {
+          "type": "string",
+          "description": "Type of assessment (e.g., Exam, Homework, Project)."
+        }
+      },
+      "required": [
+        "id",
+        "studentCourseId",
+        "grade",
+        "assessmentType"
+      ]
+    },
+    "ChatMessage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ChatMessage",
+      "type": "object",
+      "description": "Represents a chat message between users.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ChatMessage entity."
+        },
+        "senderId": {
+          "type": "string",
+          "description": "Reference to User (Sender). (Relationship: User 1:N ChatMessage)"
+        },
+        "receiverId": {
+          "type": "string",
+          "description": "Reference to User (Receiver). (Relationship: User 1:N ChatMessage)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Content of the chat message."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp of when the message was sent.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "senderId",
+        "receiverId",
+        "message",
+        "timestamp"
+      ]
+    },
+    "Notification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Notification",
+      "type": "object",
+      "description": "Represents a notification sent to a user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Notification entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Notification)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Content of the notification."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp of when the notification was sent.",
+          "format": "date-time"
+        },
+        "isRead": {
+          "type": "boolean",
+          "description": "Indicates whether the notification has been read by the user."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "message",
+        "timestamp",
+        "isRead"
+      ]
+    },
+    "TuitionPayment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TuitionPayment",
+      "type": "object",
+      "description": "Represents a tuition payment made by a parent.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the TuitionPayment entity."
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Reference to User (Student). (Relationship: User 1:N TuitionPayment)"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Amount of the tuition payment."
+        },
+        "paymentDate": {
+          "type": "string",
+          "description": "Date when the payment was made.",
+          "format": "date-time"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Method of payment (e.g., PayPal, Credit Card)."
+        }
+      },
+      "required": [
+        "id",
+        "studentId",
+        "amount",
+        "paymentDate",
+        "paymentMethod"
+      ]
+    },
+    "Assignment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Assignment",
+      "type": "object",
+      "description": "Represents an assignment given to students in a course.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Assignment entity."
+        },
+        "courseId": {
+          "type": "string",
+          "description": "Reference to Course. (Relationship: Course 1:N Assignment)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the assignment."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the assignment."
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "Due date for the assignment.",
+          "format": "date-time"
+        },
+        "resourceURL": {
+          "type": "string",
+          "description": "URL of the resources.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "id",
+        "courseId",
+        "title",
+        "description",
+        "dueDate"
+      ]
+    },
+    "SubmittedAssignment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SubmittedAssignment",
+      "type": "object",
+      "description": "Represents a submitted assignment by a student.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the SubmittedAssignment entity."
+        },
+        "assignmentId": {
+          "type": "string",
+          "description": "Reference to Assignment. (Relationship: Assignment 1:N SubmittedAssignment)"
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Reference to User (Student). (Relationship: User 1:N SubmittedAssignment)"
+        },
+        "submissionDate": {
+          "type": "string",
+          "description": "Date when the assignment was submitted.",
+          "format": "date-time"
+        },
+        "fileURL": {
+          "type": "string",
+          "description": "URL of the submitted file.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "id",
+        "assignmentId",
+        "studentId",
+        "submissionDate",
+        "fileURL"
+      ]
+    },
+    "OnlineExam": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "OnlineExam",
+      "type": "object",
+      "description": "Represents an online exam.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the OnlineExam entity."
+        },
+        "courseId": {
+          "type": "string",
+          "description": "Reference to Course. (Relationship: Course 1:N OnlineExam)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the exam."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the exam."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Exam start time.",
+          "format": "date-time"
+        },
+        "endTime": {
+          "type": "string",
+          "description": "Exam end time.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "courseId",
+        "title",
+        "description",
+        "startTime",
+        "endTime"
+      ]
+    },
+    "ExamQuestion": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ExamQuestion",
+      "type": "object",
+      "description": "Represents a question within an online exam.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ExamQuestion entity."
+        },
+        "examId": {
+          "type": "string",
+          "description": "Reference to OnlineExam. (Relationship: OnlineExam 1:N ExamQuestion)"
+        },
+        "questionText": {
+          "type": "string",
+          "description": "Text of the question."
+        },
+        "answerOptions": {
+          "type": "array",
+          "description": "Available answer options for the question.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "correctAnswer": {
+          "type": "string",
+          "description": "Correct answer to the question."
+        }
+      },
+      "required": [
+        "id",
+        "examId",
+        "questionText",
+        "answerOptions",
+        "correctAnswer"
+      ]
+    },
+    "StudentExamAttempt": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StudentExamAttempt",
+      "type": "object",
+      "description": "Represents a student's attempt at an online exam.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the StudentExamAttempt entity."
+        },
+        "examId": {
+          "type": "string",
+          "description": "Reference to OnlineExam. (Relationship: OnlineExam 1:N StudentExamAttempt)"
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Reference to User (Student). (Relationship: User 1:N StudentExamAttempt)"
+        },
+        "submissionTime": {
+          "type": "string",
+          "description": "Time when the student submitted the exam.",
+          "format": "date-time"
+        },
+        "score": {
+          "type": "number",
+          "description": "The score the student obtained on the exam."
+        }
+      },
+      "required": [
+        "id",
+        "examId",
+        "studentId",
+        "submissionTime",
+        "score"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/schools/{schoolId}",
+        "definition": {
+          "entityName": "School",
+          "schema": {
+            "$ref": "#/backend/entities/School"
+          },
+          "description": "Stores school-specific information.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles. Path-based ownership ensures only the user or an admin can access their own profile.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/grades/{gradeId}",
+        "definition": {
+          "entityName": "Grade",
+          "schema": {
+            "$ref": "#/backend/entities/Grade"
+          },
+          "description": "Stores grade level information for a specific school. Includes denormalized 'schoolId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "gradeId",
+              "description": "Unique identifier for the grade."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/sections/{sectionId}",
+        "definition": {
+          "entityName": "Section",
+          "schema": {
+            "$ref": "#/backend/entities/Section"
+          },
+          "description": "Stores section information for a specific school. Includes denormalized 'schoolId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "sectionId",
+              "description": "Unique identifier for the section."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/subjects/{subjectId}",
+        "definition": {
+          "entityName": "Subject",
+          "schema": {
+            "$ref": "#/backend/entities/Subject"
+          },
+          "description": "Stores subject information for a specific school. Includes denormalized 'schoolId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "subjectId",
+              "description": "Unique identifier for the subject."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/courses/{courseId}",
+        "definition": {
+          "entityName": "Course",
+          "schema": {
+            "$ref": "#/backend/entities/Course"
+          },
+          "description": "Stores course information for a specific school. Authorization is managed via the teacherId and schoolId. Includes denormalized 'schoolId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "courseId",
+              "description": "Unique identifier for the course."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/studentCourses/{studentCourseId}",
+        "definition": {
+          "entityName": "StudentCourse",
+          "schema": {
+            "$ref": "#/backend/entities/StudentCourse"
+          },
+          "description": "Stores student-course relationships.  Path-based ownership ensures only the user can access their own course enrollments.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user (student)."
+            },
+            {
+              "name": "studentCourseId",
+              "description": "Unique identifier for the student-course relationship."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{studentId}/tuitionPayments/{tuitionPaymentId}",
+        "definition": {
+          "entityName": "TuitionPayment",
+          "schema": {
+            "$ref": "#/backend/entities/TuitionPayment"
+          },
+          "description": "Stores tuition payment information for a student. Path-based ownership. Includes denormalized 'studentId' for authorization independence.",
+          "params": [
+            {
+              "name": "studentId",
+              "description": "Unique identifier for the student."
+            },
+            {
+              "name": "tuitionPaymentId",
+              "description": "Unique identifier for the tuition payment."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/assignments/{assignmentId}",
+        "definition": {
+          "entityName": "Assignment",
+          "schema": {
+            "$ref": "#/backend/entities/Assignment"
+          },
+          "description": "Stores assignments for a specific school.  Includes denormalized 'schoolId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "assignmentId",
+              "description": "Unique identifier for the assignment."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{studentId}/submittedAssignments/{submittedAssignmentId}",
+        "definition": {
+          "entityName": "SubmittedAssignment",
+          "schema": {
+            "$ref": "#/backend/entities/SubmittedAssignment"
+          },
+          "description": "Stores submitted assignments for a student. Path-based ownership. Includes denormalized 'studentId' for authorization independence.",
+          "params": [
+            {
+              "name": "studentId",
+              "description": "Unique identifier for the student."
+            },
+            {
+              "name": "submittedAssignmentId",
+              "description": "Unique identifier for the submitted assignment."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/onlineExams/{onlineExamId}",
+        "definition": {
+          "entityName": "OnlineExam",
+          "schema": {
+            "$ref": "#/backend/entities/OnlineExam"
+          },
+          "description": "Stores online exams for a specific school. Includes denormalized 'schoolId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "onlineExamId",
+              "description": "Unique identifier for the online exam."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/schools/{schoolId}/onlineExams/{onlineExamId}/examQuestions/{examQuestionId}",
+        "definition": {
+          "entityName": "ExamQuestion",
+          "schema": {
+            "$ref": "#/backend/entities/ExamQuestion"
+          },
+          "description": "Stores exam questions for a specific online exam.  Includes denormalized 'schoolId' and 'onlineExamId' for authorization independence.",
+          "params": [
+            {
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
+            },
+            {
+              "name": "onlineExamId",
+              "description": "Unique identifier for the online exam."
+            },
+            {
+              "name": "examQuestionId",
+              "description": "Unique identifier for the exam question."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/examAttempts/{examAttemptId}",
+        "definition": {
+          "entityName": "StudentExamAttempt",
+          "schema": {
+            "$ref": "#/backend/entities/StudentExamAttempt"
+          },
+          "description": "Stores exam attempts for a student. Path-based ownership. Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user (student)."
+            },
+            {
+              "name": "examAttemptId",
+              "description": "Unique identifier for the exam attempt."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/chatMessages/{chatMessageId}",
+        "definition": {
+          "entityName": "ChatMessage",
+          "schema": {
+            "$ref": "#/backend/entities/ChatMessage"
+          },
+          "description": "Stores chat messages between users.",
+          "params": [
+            {
+              "name": "chatMessageId",
+              "description": "Unique identifier for the chat message."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/notifications/{notificationId}",
+        "definition": {
+          "entityName": "Notification",
+          "schema": {
+            "$ref": "#/backend/entities/Notification"
+          },
+          "description": "Stores notifications for a specific user. Path-based ownership. Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user."
+            },
+            {
+              "name": "notificationId",
+              "description": "Unique identifier for the notification."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "roles_admin",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores the IDs of admin users.  Existence of a document grants admin privileges. Existence-based DBAC.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the admin user."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to support EduLink's core features, focusing on scalability, security, and ease of management. The primary strategy is to leverage path-based ownership for user-specific data and membership maps for collaborative data.  Authorization Independence is achieved by denormalizing relevant authorization data (like schoolId and roles) into subcollections when needed, avoiding costly `get()` calls in security rules.\n\n**Explanation of Structure and Authorization Independence:**\n\n*   **/schools/{schoolId}**: Stores school-specific information. Top-level collection allows for easy listing of schools by admins. No authorization dependencies here, as admin access is controlled via the `/roles_admin/{uid}` collection.\n*   **/users/{userId}**: Stores user profiles. Path-based ownership ensures that only the user (or an admin) can access their own profile data.\n*   **/schools/{schoolId}/grades/{gradeId}**, **/schools/{schoolId}/sections/{sectionId}**, **/schools/{schoolId}/subjects/{subjectId}**:  These subcollections of schools maintain information regarding grades, sections and subjects. The `schoolId` is present in each document, enabling straightforward security rules to restrict access based on the school. Admins can manage all data within a school, while teachers might be limited to specific grades or sections (roles managed in the /users/{userId} document).\n*   **/schools/{schoolId}/courses/{courseId}**: Courses are subcollections of schools. Authorization is managed by checking the `teacherId` against the current user's `uid` and the user's role. School admins can also manage courses.\n*   **/users/{userId}/studentCourses/{studentCourseId}**:  This path structure provides easy access to a student's courses. Security rules can easily verify that the requesting user is the owner of the `studentCourseId`.\n*   **/users/{studentId}/tuitionPayments/{tuitionPaymentId}**:  This enables easy access to a student's payments. Security rules will ensure a user can only access their own payment info or an admin can access all payments for reporting. The `studentId` provides ownership context.\n*   **/schools/{schoolId}/assignments/{assignmentId}**: Assignments are associated with Courses, however we place assignments at the school level so that teachers or admins can manage assignments across all courses for a given school. Security rules will ensure that only teachers assigned to the course, or admins for the school can create/modify assignments.\n*   **/users/{studentId}/submittedAssignments/{submittedAssignmentId}**: Each submission links to an assignment and a student.  Security rules ensure only the student can create the submission and teachers for that assignment can access it. \n*   **/schools/{schoolId}/onlineExams/{onlineExamId}**: Exams are organized at the school level for easy management. Access is controlled by verifying the user's role and course association.\n*   **/schools/{schoolId}/onlineExams/{onlineExamId}/examQuestions/{examQuestionId}**: Exam questions are stored as a subcollection of exams.\n*   **/users/{userId}/examAttempts/{examAttemptId}**:  The student exam attempts are stored under the user, simplifying access to view attempts by student.\n*   **/chatMessages/{chatMessageId}**:  Since the relationships between sender and receiver are 1:1 and there is no parent documents the chatMessages are placed in the root of the database, the database is optimized for frequent write. \n*   **/users/{userId}/notifications/{notificationId}**: The notifications are stored under the user, simplifying access to view notifications by user.\n*   **/roles_admin/{userId}**:  This collection stores the IDs of admin users. The existence of a document for a user in this collection grants admin privileges. This is existence-based DBAC.\n\n**QAPs (Rules are not Filters):**\n\nThe design addresses QAPs by using structural segregation and appropriate data denormalization:\n\n*   **List Operations for Schools (Admin):** The flat `/schools` collection, combined with the `/roles_admin/{uid}` collection, allows for listing all schools, restricted to admins via simple existence checks.\n*   **List Operations for User-Specific Data:** The path-based ownership (e.g., `/users/{userId}/studentCourses/{studentCourseId}`) enables efficient and secure listing of resources belonging to a specific user.\n*   **Authorization Independence:** By denormalizing `schoolId` and roles where required, the structure avoids the need for server-side filtering or complex `get()` calls in security rules, ensuring list operations are secure and efficient.\n\nThis structure provides a secure, scalable, and maintainable foundation for EduLink, aligning with best practices for Firestore development."
+  }
+}
