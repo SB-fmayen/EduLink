@@ -3,7 +3,7 @@ export type Role = 'admin' | 'teacher' | 'student' | 'parent';
 export type NavItem = {
   href: string;
   label: string;
-  icon: React.ElementType;
+  icon: string; // Changed to string to avoid React component import issues here
   roles: Role[];
 };
 
@@ -31,6 +31,12 @@ export const menuItems: NavItem[] = [
     label: 'Estudiantes',
     icon: 'Users',
     roles: ['admin', 'teacher', 'parent'],
+  },
+   {
+    href: '/dashboard/users',
+    label: 'Usuarios',
+    icon: 'Users',
+    roles: ['admin'],
   },
   {
     href: '/dashboard/teachers',
