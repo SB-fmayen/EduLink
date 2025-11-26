@@ -53,8 +53,8 @@ export default function LoginPage() {
       // El onAuthStateChanged en el layout se encargará de la redirección
     } catch (error: any) {
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        form.setError('email', { message: ' ' });
-        form.setError('password', { message: 'Correo o contraseña incorrectos. Por favor, verifica tus credenciales.' });
+        form.setError('email', { type: 'manual', message: ' ' }); // Marca el campo como error sin texto
+        form.setError('password', { type: 'manual', message: 'Correo o contraseña incorrectos. Por favor, verifica tus credenciales.' });
       } else {
         toast({
             variant: 'destructive',
