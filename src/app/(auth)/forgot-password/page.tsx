@@ -23,37 +23,38 @@ import {
 import { Input } from '@/components/ui/input';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/firebase';
-import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
-import React, { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Correo electrónico inválido.' }),
-  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
 });
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
   const auth = useAuth();
   const { toast } = useToast();
-  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: '',
-      password: '',
     },
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!auth) return;
     try {
-      initiateEmailSignIn(auth, values.email, values.password);
+      await sendPasswordResetEmail(auth, values.email);
+      toast({
+        title: 'Correo Enviado',
+        description: 'Se ha enviado un enlace para restablecer tu contraseña a tu correo electrónico.',
+      });
+      form.reset();
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: '¡Uy! Algo salió mal.',
-        description: error.message,
+        description: 'No se pudo enviar el correo. Verifica que la dirección sea correcta.',
       });
     }
   }
@@ -64,9 +65,9 @@ export default function LoginPage() {
         <div className="flex justify-center">
           <Logo />
         </div>
-        <CardTitle className="text-2xl text-center">Iniciar Sesión</CardTitle>
+        <CardTitle className="text-2xl text-center">Recuperar Contraseña</CardTitle>
         <CardDescription className="text-center">
-          Ingresa tu correo para acceder a tu cuenta
+          Ingresa tu correo para recibir un enlace de recuperación
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -85,46 +86,15 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                   <div className="flex items-center">
-                    <FormLabel>Contraseña</FormLabel>
-                    <Link href="/forgot-password" className="ml-auto inline-block text-sm underline">
-                      ¿Olvidaste tu contraseña?
-                    </Link>
-                  </div>
-                   <div className="relative">
-                    <FormControl>
-                      <Input type={showPassword ? 'text' : 'password'} {...field} />
-                    </FormControl>
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
-                      )}
-                    </button>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <Button type="submit" className="w-full">
-              Iniciar Sesión
+              Enviar Enlace de Recuperación
             </Button>
           </form>
         </Form>
         <div className="mt-4 text-center text-sm">
-          ¿No tienes una cuenta?{' '}
-          <Link href="/signup" className="underline">
-            Regístrate
+          ¿Recordaste tu contraseña?{' '}
+          <Link href="/login" className="underline">
+            Iniciar Sesión
           </Link>
         </div>
       </CardContent>
