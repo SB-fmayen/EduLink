@@ -5,6 +5,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   User,
+  FirebaseError,
   // Assume getAuth and app are initialized elsewhere
 } from 'firebase/auth';
 
@@ -16,20 +17,42 @@ export function initiateAnonymousSignIn(authInstance: Auth): void {
 }
 
 /** Initiate email/password sign-up (non-blocking). */
-export function initiateEmailSignUp(authInstance: Auth, email: string, password: string, callback?: (user: User) => void): void {
-  // CRITICAL: Call createUserWithEmailAndPassword directly. Do NOT use 'await createUserWithEmailAndPassword(...)'.
+export function initiateEmailSignUp(
+  authInstance: Auth, 
+  email: string, 
+  password: string, 
+  onSuccess?: (user: User) => void,
+  onError?: (error: FirebaseError) => void
+): void {
   createUserWithEmailAndPassword(authInstance, email, password)
     .then(userCredential => {
-      if(callback) {
-        callback(userCredential.user);
+      if(onSuccess) {
+        onSuccess(userCredential.user);
+      }
+    })
+    .catch((error: FirebaseError) => {
+      if (onError) {
+        onError(error);
       }
     });
-  // Code continues immediately. Auth state change is handled by onAuthStateChanged listener.
 }
 
 /** Initiate email/password sign-in (non-blocking). */
-export function initiateEmailSignIn(authInstance: Auth, email: string, password: string): void {
-  // CRITICAL: Call signInWithEmailAndPassword directly. Do NOT use 'await signInWithEmailAndPassword(...)'.
-  signInWithEmailAndPassword(authInstance, email, password);
-  // Code continues immediately. Auth state change is handled by onAuthStateChanged listener.
+export function initiateEmailSignIn(
+  authInstance: Auth, 
+  email: string, 
+  password: string,
+  callback?: (error: FirebaseError | null) => void
+): void {
+  signInWithEmailAndPassword(authInstance, email, password)
+    .then(() => {
+      if (callback) {
+        callback(null); // Success
+      }
+    })
+    .catch((error: FirebaseError) => {
+      if (callback) {
+        callback(error); // Failure
+      }
+    });
 }

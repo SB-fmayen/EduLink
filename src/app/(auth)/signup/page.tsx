@@ -31,6 +31,7 @@ import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { User } from 'firebase/auth';
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { FirebaseError } from 'firebase/app';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'El nombre completo debe tener al menos 2 caracteres.' }),
@@ -56,27 +57,44 @@ export default function SignupPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
      try {
-      initiateEmailSignUp(auth, values.email, values.password, (user: User) => {
-        if(user) {
-           const [firstName, ...lastNameParts] = values.fullName.split(' ');
-            const lastName = lastNameParts.join(' ');
+      initiateEmailSignUp(auth, values.email, values.password, 
+        (user) => { // Success callback
+          if(user) {
+             const [firstName, ...lastNameParts] = values.fullName.split(' ');
+              const lastName = lastNameParts.join(' ');
 
-            const userRef = doc(firestore, 'users', user.uid);
-            setDocumentNonBlocking(userRef, {
-              id: user.uid,
-              firstName: firstName,
-              lastName: lastName,
-              email: values.email,
-              role: 'student', // Rol por defecto
-              schoolId: 'default-school-id', // Asignar un ID de escuela por defecto o nulo
-            }, { merge: true });
+              const userRef = doc(firestore, 'users', user.uid);
+              setDocumentNonBlocking(userRef, {
+                id: user.uid,
+                firstName: firstName,
+                lastName: lastName,
+                email: values.email,
+                role: 'student', // Rol por defecto
+                schoolId: 'default-school-id', // Asignar un ID de escuela por defecto o nulo
+              }, { merge: true });
+          }
+        },
+        (error) => { // Error callback
+            if (error) {
+                let description = 'Ocurrió un error inesperado.';
+                if (error.code === 'auth/email-already-in-use') {
+                    description = 'Este correo electrónico ya está en uso. Por favor, intenta con otro.';
+                } else {
+                    description = error.message;
+                }
+                toast({
+                    variant: 'destructive',
+                    title: 'Error al crear la cuenta',
+                    description,
+                });
+            }
         }
-      });
+      );
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: '¡Uy! Algo salió mal.',
-        description: error.message,
+        description: 'No se pudo intentar el registro.',
       });
     }
   }

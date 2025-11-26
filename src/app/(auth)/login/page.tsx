@@ -27,10 +27,11 @@ import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { FirebaseError } from 'firebase/app';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Correo electrónico inválido.' }),
-  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
+  password: z.string().min(1, { message: 'La contraseña es requerida.' }),
 });
 
 export default function LoginPage() {
@@ -48,12 +49,26 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      initiateEmailSignIn(auth, values.email, values.password);
+      initiateEmailSignIn(auth, values.email, values.password, (error) => {
+        if (error) {
+          let description = 'Ocurrió un error inesperado.';
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            description = 'Correo o contraseña incorrectos. Por favor, verifica tus credenciales.';
+          } else {
+             description = error.message;
+          }
+          toast({
+            variant: 'destructive',
+            title: 'Error al iniciar sesión',
+            description,
+          });
+        }
+      });
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: '¡Uy! Algo salió mal.',
-        description: error.message,
+        description: 'No se pudo intentar el inicio de sesión.',
       });
     }
   }
