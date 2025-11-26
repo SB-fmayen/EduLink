@@ -23,11 +23,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/firebase';
-import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { FirebaseError } from 'firebase/app';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Correo electrónico inválido.' }),
@@ -48,28 +47,21 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!auth) return;
     try {
-      initiateEmailSignIn(auth, values.email, values.password, (error) => {
-        if (error) {
-          let description = 'Ocurrió un error inesperado.';
-          if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-            description = 'Correo o contraseña incorrectos. Por favor, verifica tus credenciales.';
-          } else {
-             description = error.message;
-          }
-          toast({
+      await signInWithEmailAndPassword(auth, values.email, values.password);
+      // El onAuthStateChanged en el layout se encargará de la redirección
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        form.setError('email', { message: ' ' });
+        form.setError('password', { message: 'Correo o contraseña incorrectos. Por favor, verifica tus credenciales.' });
+      } else {
+        toast({
             variant: 'destructive',
             title: 'Error al iniciar sesión',
-            description,
-          });
-        }
-      });
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: '¡Uy! Algo salió mal.',
-        description: 'No se pudo intentar el inicio de sesión.',
-      });
+            description: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.',
+        });
+      }
     }
   }
 
@@ -131,8 +123,8 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full">
-              Iniciar Sesión
+            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Iniciando...' : 'Iniciar Sesión'}
             </Button>
           </form>
         </Form>

@@ -23,15 +23,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/firebase';
-import { initiateEmailSignUp } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
 import { doc, setDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { User } from 'firebase/auth';
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { FirebaseError } from 'firebase/app';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'El nombre completo debe tener al menos 2 caracteres.' }),
@@ -56,46 +54,36 @@ export default function SignupPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-     try {
-      initiateEmailSignUp(auth, values.email, values.password, 
-        (user) => { // Success callback
-          if(user) {
-             const [firstName, ...lastNameParts] = values.fullName.split(' ');
-              const lastName = lastNameParts.join(' ');
+    if (!auth || !firestore) return;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+      
+      const [firstName, ...lastNameParts] = values.fullName.split(' ');
+      const lastName = lastNameParts.join(' ');
 
-              const userRef = doc(firestore, 'users', user.uid);
-              setDocumentNonBlocking(userRef, {
-                id: user.uid,
-                firstName: firstName,
-                lastName: lastName,
-                email: values.email,
-                role: 'student', // Rol por defecto
-                schoolId: 'default-school-id', // Asignar un ID de escuela por defecto o nulo
-              }, { merge: true });
-          }
-        },
-        (error) => { // Error callback
-            if (error) {
-                let description = 'Ocurrió un error inesperado.';
-                if (error.code === 'auth/email-already-in-use') {
-                    description = 'Este correo electrónico ya está en uso. Por favor, intenta con otro.';
-                } else {
-                    description = error.message;
-                }
-                toast({
-                    variant: 'destructive',
-                    title: 'Error al crear la cuenta',
-                    description,
-                });
-            }
-        }
-      );
+      const userRef = doc(firestore, 'users', user.uid);
+      setDocumentNonBlocking(userRef, {
+        id: user.uid,
+        firstName: firstName,
+        lastName: lastName,
+        email: values.email,
+        role: 'student', // Rol por defecto
+        schoolId: 'default-school-id', // Asignar un ID de escuela por defecto o nulo
+      }, { merge: true });
+
+      // La redirección será manejada por el layout al detectar el usuario
+      
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: '¡Uy! Algo salió mal.',
-        description: 'No se pudo intentar el registro.',
-      });
+        if (error.code === 'auth/email-already-in-use') {
+           form.setError('email', { message: 'Este correo electrónico ya está en uso.' });
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Error al crear la cuenta',
+                description: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.',
+            });
+        }
     }
   }
 
@@ -165,8 +153,8 @@ export default function SignupPage() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full">
-              Crear una cuenta
+            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Creando cuenta...' : 'Crear una cuenta'}
             </Button>
           </form>
         </Form>
