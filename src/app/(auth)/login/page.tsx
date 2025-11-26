@@ -25,6 +25,8 @@ import { Logo } from '@/components/logo';
 import { useAuth } from '@/firebase';
 import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
+import React, { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Correo electrónico inválido.' }),
@@ -34,6 +36,7 @@ const formSchema = z.object({
 export default function LoginPage() {
   const auth = useAuth();
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -93,9 +96,22 @@ export default function LoginPage() {
                       ¿Olvidaste tu contraseña?
                     </Link>
                   </div>
-                  <FormControl>
-                    <Input type="password" {...field} />
-                  </FormControl>
+                   <div className="relative">
+                    <FormControl>
+                      <Input type={showPassword ? 'text' : 'password'} {...field} />
+                    </FormControl>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-gray-500" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-gray-500" />
+                      )}
+                    </button>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
