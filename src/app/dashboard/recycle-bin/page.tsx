@@ -28,12 +28,13 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from '@/components/ui/button';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2, Search } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, query, where, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, query, where, updateDoc, deleteDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { toast } from '@/hooks/use-toast';
 import { updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
 
 
 interface SoftDeletedItem {
@@ -51,6 +52,9 @@ function InactiveSchools() {
     const { data: inactiveSchools, isLoading } = useCollection<SoftDeletedItem>(inactiveSchoolsQuery);
 
     const [schoolToPermanentlyDelete, setSchoolToPermanentlyDelete] = React.useState<SoftDeletedItem | null>(null);
+    const [isAlertOpen, setIsAlertOpen] = React.useState(false);
+    const [alertContent, setAlertContent] = React.useState({ title: '', description: '' });
+    const [searchTerm, setSearchTerm] = React.useState('');
 
     const handleRestore = (schoolId: string) => {
         const schoolDocRef = doc(firestore, 'schools', schoolId);
@@ -60,6 +64,23 @@ function InactiveSchools() {
             description: "La escuela ha sido restaurada y ahora está activa."
         });
     };
+    
+    const handleDeleteAttempt = async (school: SoftDeletedItem) => {
+        const usersRef = collection(firestore, 'users');
+        const q = query(usersRef, where('schoolId', '==', school.id));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+            setAlertContent({
+                title: 'No se puede eliminar permanentemente la escuela',
+                description: `Esta escuela tiene ${snapshot.size} usuario(s) asociado(s). Para poder eliminarla, primero reasigna o elimina estos usuarios.`,
+            });
+            setIsAlertOpen(true);
+        } else {
+            setSchoolToPermanentlyDelete(school);
+        }
+    };
+
 
     const executePermanentDelete = () => {
         if (!schoolToPermanentlyDelete) return;
@@ -72,6 +93,11 @@ function InactiveSchools() {
         });
         setSchoolToPermanentlyDelete(null);
     };
+    
+    const filteredSchools = React.useMemo(() => {
+        if (!inactiveSchools) return [];
+        return inactiveSchools.filter(school => school.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [inactiveSchools, searchTerm]);
 
     return (
         <Card>
@@ -80,6 +106,15 @@ function InactiveSchools() {
                 <CardDescription>
                     Lista de escuelas desactivadas. Pueden ser restauradas o eliminadas permanentemente.
                 </CardDescription>
+                 <div className="relative pt-2">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Buscar escuela por nombre..."
+                        className="pl-8"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -95,8 +130,8 @@ function InactiveSchools() {
                         <TableRow>
                         <TableCell colSpan={3} className="text-center">Cargando...</TableCell>
                         </TableRow>
-                    ) : inactiveSchools && inactiveSchools.length > 0 ? (
-                        inactiveSchools.map((school) => (
+                    ) : filteredSchools.length > 0 ? (
+                        filteredSchools.map((school) => (
                         <TableRow key={school.id}>
                             <TableCell>{school.name}</TableCell>
                             <TableCell>{school.deletedAt ? new Date(school.deletedAt.toDate()).toLocaleString() : 'N/A'}</TableCell>
@@ -105,7 +140,7 @@ function InactiveSchools() {
                                     <RotateCcw className="mr-2 h-4 w-4" />
                                     Restaurar
                                 </Button>
-                                <Button variant="destructive" size="sm" onClick={() => setSchoolToPermanentlyDelete(school)}>
+                                <Button variant="destructive" size="sm" onClick={() => handleDeleteAttempt(school)}>
                                     <Trash2 className="mr-2 h-4 w-4" />
                                     Eliminar
                                 </Button>
@@ -129,6 +164,17 @@ function InactiveSchools() {
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={executePermanentDelete} className="bg-destructive hover:bg-destructive/90">Eliminar Permanentemente</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+             <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{alertContent.title}</AlertDialogTitle>
+                        <AlertDialogDescription>{alertContent.description}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setIsAlertOpen(false)}>Entendido</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

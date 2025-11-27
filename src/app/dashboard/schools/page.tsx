@@ -78,7 +78,7 @@ const formSchema = z.object({
 export default function SchoolsPage() {
   const firestore = useFirestore();
   const schoolsRef = useMemoFirebase(() => collection(firestore, 'schools'), [firestore]);
-  const activeSchoolsQuery = useMemoFirebase(() => query(schoolsRef, where('status', '==', 'active')), [schoolsRef]);
+  const activeSchoolsQuery = useMemoFirebase(() => query(schoolsRef, where('status', '!=', 'inactive')), [schoolsRef]);
   const { data: schools, isLoading } = useCollection<SchoolData>(activeSchoolsQuery);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
