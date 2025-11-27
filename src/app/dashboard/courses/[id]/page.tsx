@@ -94,12 +94,14 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
 
     // --- Permissions Logic ---
     const canViewStudents = React.useMemo(() => {
+        // Only determine permissions AFTER all loading is complete.
         if (isProfileLoading || isCourseLoading || !userProfile || !course) return false;
         return userProfile.role === 'admin' || user?.uid === course.teacherId;
     }, [isProfileLoading, isCourseLoading, userProfile, course, user]);
 
 
     // --- Student Data Fetching (Conditional) ---
+    // This ref is now derived from canViewStudents, which waits for loading to complete.
     const enrolledStudentsRef = useMemoFirebase(() => {
         if (canViewStudents && schoolId && courseId) {
             return collection(firestore, `schools/${schoolId}/courses/${courseId}/students`);
@@ -108,18 +110,26 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     }, [canViewStudents, firestore, schoolId, courseId]);
     const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<EnrolledStudent>(enrolledStudentsRef);
 
+    const studentIds = React.useMemo(() => {
+        if (!enrolledStudents || enrolledStudents.length === 0) return null;
+        return enrolledStudents.map(s => s.id);
+    }, [enrolledStudents]);
+
     const studentProfilesQuery = useMemoFirebase(() => {
-        if (!canViewStudents || !enrolledStudents || enrolledStudents.length === 0) return null;
-        const studentIds = enrolledStudents.map(s => s.id);
+        if (!studentIds) return null;
+        // Important: Ensure studentIds is not empty before creating a query with 'in'
+        if (studentIds.length === 0) return null;
         return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
-    }, [firestore, enrolledStudents, canViewStudents]);
+    }, [firestore, studentIds]);
+
     const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
 
+
     // --- Combined Loading State ---
-    const isLoading = isAuthLoading || isProfileLoading || isCourseLoading;
+    const isCoreDataLoading = isAuthLoading || isProfileLoading || isCourseLoading;
     const isLoadingStudentList = canViewStudents && (isLoadingEnrolled || isLoadingProfiles);
 
-    if (isLoading) {
+    if (isCoreDataLoading) {
         return (
             <div className="space-y-4">
                 <Skeleton className="h-9 w-1/2" />
@@ -241,3 +251,4 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         </div>
     );
 }
+
