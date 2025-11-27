@@ -234,10 +234,10 @@ export default function TeachersPage() {
       newTeacherForm.reset();
 
     } catch (error: any) {
-      console.error("Error creating teacher:", error);
       if (error.code === 'auth/email-already-in-use') {
-        newTeacherForm.setError('email', { message: 'Este correo ya está en uso.' });
+        newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
       } else {
+        console.error("Error creating teacher:", error);
         toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {

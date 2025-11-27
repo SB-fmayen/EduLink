@@ -51,7 +51,7 @@ import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 
@@ -233,10 +233,10 @@ export default function StudentsPage() {
       newStudentForm.reset();
 
     } catch (error: any) {
-      console.error("Error creating student:", error);
       if (error.code === 'auth/email-already-in-use') {
-        newStudentForm.setError('email', { message: 'Este correo ya está en uso.' });
+        newStudentForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
       } else {
+        console.error("Error creating student:", error);
         toast({ variant: 'destructive', title: 'Error al crear estudiante', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
