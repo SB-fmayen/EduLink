@@ -33,7 +33,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, documentId, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
@@ -87,8 +87,8 @@ export default function StudentsPage() {
   const userRole = userData?.role;
   
   const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('');
-  const [students, setStudents] = React.useState<UserData[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
+
+  // --- Data fetching ---
 
   // For Admins: A simple query to get all students
   const adminStudentsQuery = useMemoFirebase(() => {
@@ -101,95 +101,40 @@ export default function StudentsPage() {
     return null;
   }, [userRole, firestore]);
   const { data: adminStudents, isLoading: isAdminStudentsLoading } = useCollection<UserData>(adminStudentsQuery);
-
-  React.useEffect(() => {
-    if (userRole === 'admin') {
-      setStudents(adminStudents || []);
-      setIsLoading(isAdminStudentsLoading);
-    }
-  }, [userRole, adminStudents, isAdminStudentsLoading]);
   
-  // For Teachers: Multi-step secure fetch logic
-  React.useEffect(() => {
-    if (userRole !== 'teacher' || !selectedSectionFilter || !firestore || !user || !schoolId) {
-        if(userRole === 'teacher') setStudents([]);
-        return;
-    }
+  // For Teachers: A simple query based on selected section
+  const teacherStudentsQuery = useMemoFirebase(() => {
+      if (userRole === 'teacher' && schoolId && selectedSectionFilter) {
+          return query(
+              collection(firestore, 'users'),
+              where('schoolId', '==', schoolId),
+              where('role', '==', 'student'),
+              where('sectionId', '==', selectedSectionFilter)
+          );
+      }
+      return null;
+  }, [userRole, schoolId, selectedSectionFilter, firestore]);
+  const { data: teacherStudents, isLoading: isTeacherStudentsLoading } = useCollection<UserData>(teacherStudentsQuery);
 
-    const fetchStudentsForTeacher = async () => {
-        setIsLoading(true);
-        try {
-            // Step 1: Find courses taught by the teacher in the selected section
-            const teacherCoursesQuery = query(
-                collection(firestore, `schools/${schoolId}/courses`),
-                where('teacherId', '==', user.uid),
-                where('sectionId', '==', selectedSectionFilter)
-            );
-            const coursesSnapshot = await getDocs(teacherCoursesQuery);
-            const courseIds = coursesSnapshot.docs.map(doc => doc.id);
-
-            if (courseIds.length === 0) {
-                setStudents([]);
-                setIsLoading(false);
-                return;
-            }
-
-            // Step 2: Find all student enrollments for these courses using a collectionGroup query
-            const studentCoursesQuery = query(
-                collectionGroup(firestore, 'studentCourses'),
-                where('courseId', 'in', courseIds)
-            );
-            const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
-            const studentIds = [...new Set(studentCoursesSnapshot.docs.map(doc => doc.data().studentId))];
-
-
-            // Step 3: Fetch the user profiles for these students
-            if (studentIds.length > 0) {
-                 const studentsQuery = query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
-                 const studentsSnapshot = await getDocs(studentsQuery);
-                 const studentsData = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
-                 setStudents(studentsData);
-            } else {
-                setStudents([]);
-            }
-
-        } catch (error) {
-            console.error("Error fetching students for teacher:", error);
-            toast({ variant: 'destructive', title: "Error", description: "No se pudieron cargar los estudiantes."});
-            setStudents([]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    fetchStudentsForTeacher();
-
-  }, [userRole, selectedSectionFilter, firestore, user, schoolId]);
-
+  const students = userRole === 'admin' ? adminStudents : teacherStudents;
+  const isLoading = isAdminStudentsLoading || isTeacherStudentsLoading;
 
   const teacherCoursesQuery = useMemoFirebase(() => {
       if (userRole === 'teacher' && user && schoolId) {
-          return query(collection(firestore, 'schools', schoolId!, 'courses'), where('teacherId', '==', user.uid));
+          return query(collection(firestore, 'schools', schoolId!), 'courses', where('teacherId', '==', user.uid));
       }
       return null;
   }, [schoolId, userRole, user, firestore]);
-
   const { data: teacherCourses } = useCollection<CourseData>(teacherCoursesQuery);
-  
+
   const allSectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
   const { data: allSections } = useCollection<SectionData>(allSectionsRef);
-  
+
   const teacherSections = React.useMemo(() => {
     if (userRole !== 'teacher' || !teacherCourses || !allSections) return allSections || [];
     const sectionIds = new Set(teacherCourses.map(c => c.sectionId));
     return allSections.filter(s => sectionIds.has(s.id));
   }, [userRole, teacherCourses, allSections]);
-
-  const sectionsRef = useMemoFirebase(
-    () => (schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null),
-    [schoolId, firestore]
-  );
-  const { data: sections } = useCollection<SectionData>(sectionsRef);
 
   const gradesRef = useMemoFirebase(
     () => (schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null),
@@ -214,8 +159,8 @@ export default function StudentsPage() {
     );
   const sectionsMap =
     React.useMemo(
-      () => sections?.reduce((acc, section) => ({ ...acc, [section.id]: section }), {} as Record<string, SectionData>) || {},
-      [sections]
+      () => allSections?.reduce((acc, section) => ({ ...acc, [section.id]: section }), {} as Record<string, SectionData>) || {},
+      [allSections]
     );
 
   const handleAssignClick = (student: UserData) => {
@@ -225,7 +170,7 @@ export default function StudentsPage() {
   };
 
   const handleAssignToSection = async () => {
-    if (!selectedStudent || !selectedSection || !courses || !sections) {
+    if (!selectedStudent || !selectedSection || !courses || !allSections) {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -234,7 +179,7 @@ export default function StudentsPage() {
       return;
     }
 
-    const sectionData = sections.find((s) => s.id === selectedSection);
+    const sectionData = allSections.find((s) => s.id === selectedSection);
     if (!sectionData) {
       toast({
         variant: 'destructive',
@@ -255,17 +200,13 @@ export default function StudentsPage() {
       return;
     }
 
-    // 1. Update the student's document with sectionId and gradeId
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
     updateDocumentNonBlocking(studentDocRef, {
       sectionId: sectionData.id,
       gradeId: sectionData.gradeId,
     });
 
-    // 2. Enroll the student in all courses of that section
     const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
-    // Note: For a real-world app, you might want to first check which courses the student is already enrolled in to avoid duplicates.
-    // For simplicity here, we'll add them. Firestore will create new documents with unique IDs.
     for (const course of coursesInSection) {
       await addDocumentNonBlocking(studentCoursesRef, {
         studentId: selectedStudent.id,
@@ -331,7 +272,7 @@ export default function StudentsPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {!isLoading && students.length > 0 ? (
+              {!isLoading && students && students.length > 0 ? (
                 students.map((student) => (
                   <TableRow key={student.id}>
                     <TableCell className="font-medium">

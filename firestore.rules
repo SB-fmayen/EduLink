@@ -139,7 +139,7 @@ service cloud.firestore {
       allow delete: if isOwner(userId) || isAdmin();
 
       match /studentCourses/{studentCourseId} {
-        allow get, list: if isOwner(userId) || isAdmin();
+        allow get, list: if isOwner(userId) || isAdmin() || isTeacherOfCourse(get(/databases/$(database)/documents/users/$(userId)).data.schoolId, resource.data.courseId);
         allow create: if (isOwner(userId) && request.resource.data.studentId == userId) || isAdmin();
         allow update, delete: if (isOwner(userId) || isAdmin()) && resource != null && request.resource.data.studentId == resource.data.studentId;
       }
