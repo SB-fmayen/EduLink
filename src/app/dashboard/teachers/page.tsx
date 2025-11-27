@@ -45,8 +45,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail, getAuth, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { initializeApp, deleteApp } from "firebase/app";
+import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 
 interface UserData {
@@ -215,12 +216,9 @@ export default function TeachersPage() {
 
       await batch.commit();
       
-      const mainAuth = getAuth();
-      await sendPasswordResetEmail(mainAuth, values.email);
-      
       toast({ 
           title: 'Profesor Creado', 
-          description: 'La cuenta ha sido creada y se ha enviado un correo de bienvenida.' 
+          description: 'La cuenta ha sido creada exitosamente.' 
       });
       setIsNewTeacherDialogOpen(false);
       newTeacherForm.reset();

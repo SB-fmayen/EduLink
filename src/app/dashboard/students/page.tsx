@@ -51,7 +51,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
@@ -214,12 +214,9 @@ export default function StudentsPage() {
       const userDocRef = doc(firestore, 'users', newUser.uid);
       await setDoc(userDocRef, userPayload);
       
-      const mainAuth = getAuth();
-      await sendPasswordResetEmail(mainAuth, values.email);
-
       toast({ 
         title: 'Estudiante Creado', 
-        description: 'La cuenta ha sido creada y se ha enviado un correo de bienvenida.' 
+        description: 'La cuenta ha sido creada exitosamente.' 
       });
       setIsNewStudentDialogOpen(false);
       newStudentForm.reset();
