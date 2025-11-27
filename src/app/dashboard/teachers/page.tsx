@@ -91,7 +91,6 @@ export default function TeachersPage() {
     if (userRole === 'admin' && adminSchoolId) {
       return query(collection(firestore, 'users'), where('schoolId', '==', adminSchoolId), where('role', '==', 'teacher'));
     }
-    // For non-admins or admins without a schoolId, we return null to avoid unnecessary queries.
     if (userRole === 'admin') {
       return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }
@@ -426,3 +425,4 @@ export default function TeachersPage() {
     </div>
   );
 }
+

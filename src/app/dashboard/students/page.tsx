@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -198,7 +199,6 @@ export default function StudentsPage() {
     try {
       secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
     } catch (e) {
-      // App might already be initialized from a previous failed attempt
       secondaryApp = getApp(secondaryAppName);
     }
     const secondaryAuth = getAuth(secondaryApp);
@@ -407,3 +407,4 @@ export default function StudentsPage() {
     </div>
   );
 }
+
