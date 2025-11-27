@@ -66,6 +66,17 @@ service cloud.firestore {
       // Admins can manage schools, any signed-in user can view them.
       allow get, list: if isSignedIn();
       allow create, update, delete: if isAdmin(userProfile);
+      
+      // Rules for role-based subcollections
+      match /teachers/{teacherId} {
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow write: if isAdmin(userProfile); // Only admins can manage the teacher list
+      }
+
+      match /students/{studentId} {
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow write: if isAdmin(userProfile); // Only admins can manage the student list for now
+      }
 
       match /grades/{gradeId} {
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
@@ -135,9 +146,9 @@ service cloud.firestore {
       // Users can read their own profile. Admins can read any profile.
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
-      // Admins can list users if the query is scoped by 'role' and 'schoolId'.
-      // This requires a composite index on (schoolId ASC, role ASC).
-      allow list: if isAdmin(userProfile) && request.query.where.schoolId is string && request.query.where.role is string;
+      // Admins can list all users of a certain role
+      allow list: if isAdmin(userProfile) && request.query.where.role is string ||
+                   (request.query.keys.hasAny(['id'])); // For fetching specific profiles by ID
 
       // New users can create their own profile.
       allow create: if isOwner(userId);
