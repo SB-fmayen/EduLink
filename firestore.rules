@@ -117,7 +117,7 @@ service cloud.firestore {
       // Allow admins to get any user, and users to get their own profile
       allow get: if isOwner(userId) || isAdmin();
       
-      // Admins can list all users. Teachers can list students in their school if they provide a correct query.
+      // Admins can list all users. Teachers can list students if their query is scoped to their school and student role.
       allow list: if isAdmin() || (isTeacher() && request.query.where.schoolId[2] == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId && request.query.where.role[2] == 'student');
 
       allow create: if isOwner(userId);
@@ -128,6 +128,8 @@ service cloud.firestore {
         allow get, list: if isOwner(userId) || isAdmin() || isTeacherOfCourse(get(/databases/$(database)/documents/users/$(userId)).data.schoolId, resource.data.courseId);
         allow create: if (isOwner(userId) && request.resource.data.studentId == userId) || isAdmin();
         allow update, delete: if (isOwner(userId) || isAdmin()) && resource != null && request.resource.data.studentId == resource.data.studentId;
+        // Allow admins to perform collection group queries on studentCourses
+        allow list: if isAdmin();
       }
 
       match /tuitionPayments/{tuitionPaymentId} {
@@ -181,8 +183,6 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
       allow update, delete: if isOwner(resource.data.senderId) && resource != null;
     }
-    match /studentCourses/{studentCourseId} {
-      allow read: if isSignedIn();
-    }
+    
   }
 }

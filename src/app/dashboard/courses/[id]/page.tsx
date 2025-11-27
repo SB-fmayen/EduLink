@@ -74,6 +74,13 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                     where('courseId', '==', courseId)
                 );
                 const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
+                
+                if (studentCoursesSnapshot.empty) {
+                    setStudents([]);
+                    setIsLoadingStudents(false);
+                    return;
+                }
+
                 const studentIds = studentCoursesSnapshot.docs.map(doc => doc.data().studentId);
 
                 // 2. If we found students, fetch their user profiles
@@ -123,7 +130,14 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                     </TableHeader>
                     <TableBody>
                         {isLoadingStudents ? (
-                            <TableRow><TableCell colSpan={4} className="text-center"><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                             Array.from({ length: 3 }).map((_, index) => (
+                                <TableRow key={index}>
+                                    <TableCell><Skeleton className="h-6 w-full" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-full" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-full" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-full" /></TableCell>
+                                </TableRow>
+                             ))
                         ) : students.length > 0 ? (
                             students.map(student => (
                                 <TableRow key={student.id}>
