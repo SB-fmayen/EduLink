@@ -82,8 +82,8 @@ service cloud.firestore {
         }
 
         allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
-        allow create: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
+        allow list: if isMemberOfSchool(userProfile, schoolId);
+        allow create: if isAdmin(userProfile);
         allow update, delete: if (isTeacherOfCourse() || isAdmin(userProfile));
 
         match /students/{studentId} {
@@ -137,8 +137,8 @@ service cloud.firestore {
       // Users can read their own profile. Admins can read any profile.
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
-      // Admins can list users if the query is scoped by 'schoolId' AND 'role'.
-      allow list: if isAdmin(userProfile) && 'schoolId' in request.query.where && 'role' in request.query.where;
+      // Admins can list users if the query is scoped by 'role'.
+      allow list: if isAdmin(userProfile) && 'role' in request.query.where;
 
       // New users can create their own profile.
       allow create: if isOwner(userId);
