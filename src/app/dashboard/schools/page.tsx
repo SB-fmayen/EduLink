@@ -43,7 +43,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, serverTimestamp, query, where, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -113,15 +113,24 @@ export default function SchoolsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDeleteAttempt = async (school: SchoolData) => {
+  const handleDeactivateAttempt = async (school: SchoolData) => {
+    if (school.id === 'default-school-id') {
+        setAlertContent({
+            title: 'Acción no permitida',
+            description: 'La escuela por defecto no puede ser desactivada. Es necesaria para el registro de nuevos usuarios.',
+        });
+        setIsAlertOpen(true);
+        return;
+    }
+    
     const usersRef = collection(firestore, 'users');
-    const q = query(usersRef, where('schoolId', '==', school.id), where('status', '==', 'active'));
+    const q = query(usersRef, where('schoolId', '==', school.id));
     const snapshot = await getDocs(q);
 
     if (!snapshot.empty) {
       setAlertContent({
         title: 'No se puede desactivar la escuela',
-        description: `Esta escuela tiene ${snapshot.size} usuario(s) activo(s) y no puede ser desactivada.`,
+        description: `Esta escuela tiene ${snapshot.size} usuario(s) asignado(s) y no puede ser desactivada. Por favor, reasigna los usuarios a otra escuela antes de continuar.`,
       });
       setIsAlertOpen(true);
     } else {
@@ -214,8 +223,8 @@ export default function SchoolsPage() {
                           <DropdownMenuItem onClick={() => handleEditClick(school)}>
                             Editar
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteAttempt(school); }}>
-                            Eliminar
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeactivateAttempt(school); }}>
+                            Desactivar
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -286,7 +295,7 @@ export default function SchoolsPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={executeDeactivate}>Continuar</AlertDialogAction>
+            <AlertDialogAction onClick={executeDeactivate}>Desactivar</AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -305,3 +314,5 @@ export default function SchoolsPage() {
     </div>
   );
 }
+
+    
