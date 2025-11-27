@@ -209,8 +209,9 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
   
   // Filtrar secciones basadas en el grado seleccionado
   const filteredSections = React.useMemo(() => {
+    if (!allSections) return []; // Asegurarse de que sea siempre un array
     if (selectedGrade === 'all') return allSections;
-    return allSections?.filter(section => section.gradeId === selectedGrade) || [];
+    return allSections.filter(section => section.gradeId === selectedGrade);
   }, [selectedGrade, allSections]);
 
 
