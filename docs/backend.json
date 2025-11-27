@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "School": {
@@ -117,6 +118,10 @@
         "gradeId": {
           "type": "string",
           "description": "Reference to Grade. (Relationship: Grade 1:N Section)"
+        },
+        "gradeName": {
+          "type": "string",
+          "description": "Denormalized name of the referenced Grade."
         }
       },
       "required": [
@@ -164,13 +169,25 @@
           "type": "string",
           "description": "Reference to Subject. (Relationship: Subject 1:N Course)"
         },
+        "subjectName": {
+          "type": "string",
+          "description": "Denormalized name of the referenced Subject."
+        },
         "sectionId": {
           "type": "string",
           "description": "Reference to Section. (Relationship: Section 1:N Course)"
         },
+        "sectionName": {
+          "type": "string",
+          "description": "Denormalized name of the referenced Section."
+        },
         "teacherId": {
           "type": "string",
           "description": "Reference to User (Teacher). (Relationship: User 1:N Course)"
+        },
+        "teacherName": {
+          "type": "string",
+          "description": "Denormalized name of the referenced Teacher."
         },
         "schedule": {
           "type": "string",

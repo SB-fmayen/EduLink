@@ -80,8 +80,11 @@ import { MoreHorizontal, PlusCircle } from 'lucide-react';
 interface CourseData {
     id: string;
     subjectId: string;
+    subjectName?: string;
     sectionId: string;
+    sectionName?: string;
     teacherId: string;
+    teacherName?: string;
     schedule: string;
 }
 
@@ -493,6 +496,7 @@ interface SectionData {
   id: string;
   name: string;
   gradeId: string;
+  gradeName?: string;
   createdAt?: {
     toDate: () => Date;
   };
@@ -610,13 +614,25 @@ function SectionsManager() {
     };
 
     const onSectionSubmit = (values: z.infer<typeof sectionFormSchema>) => {
-        if (!schoolId) return;
+        if (!schoolId || !grades) return;
+
+        const grade = grades.find(g => g.id === values.gradeId);
+        if (!grade) {
+            toast({ variant: "destructive", title: "Error", description: "El grado seleccionado no es válido."});
+            return;
+        }
+
+        const dataToSave = {
+            ...values,
+            gradeName: grade.name,
+        };
+
         if (editingSection) {
             const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', editingSection.id);
-            updateDocumentNonBlocking(sectionDocRef, values);
+            updateDocumentNonBlocking(sectionDocRef, dataToSave);
             toast({ title: "Sección Actualizada" });
         } else {
-            addDocumentNonBlocking(sectionsRef!, { ...values, schoolId, createdAt: serverTimestamp() });
+            addDocumentNonBlocking(sectionsRef!, { ...dataToSave, schoolId, createdAt: serverTimestamp() });
             toast({ title: "Sección Creada" });
         }
         setIsSectionDialogOpen(false);
@@ -630,21 +646,33 @@ function SectionsManager() {
     };
 
     const onCourseAssignmentSubmit = (values: z.infer<typeof courseAssignmentFormSchema>) => {
-        if (!schoolId || !managingCoursesForSection || !coursesRef) return;
+        if (!schoolId || !managingCoursesForSection || !coursesRef || !subjects || !teachers) return;
         
+        const subject = subjects.find(s => s.id === values.subjectId);
+        const teacher = teachers.find(t => t.id === values.teacherId);
+
+        if (!subject || !teacher) {
+            toast({ variant: "destructive", title: "Error", description: "La asignatura o el profesor seleccionado no son válidos." });
+            return;
+        }
+
+        const dataToSave = {
+            ...values,
+            sectionId: managingCoursesForSection.id,
+            sectionName: managingCoursesForSection.name,
+            subjectName: subject.name,
+            teacherName: `${teacher.firstName} ${teacher.lastName}`,
+            schoolId,
+        };
+
         if (editingCourse) {
             const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', editingCourse.id);
-            updateDocumentNonBlocking(courseDocRef, {
-                ...editingCourse,
-                ...values,
-            });
+            updateDocumentNonBlocking(courseDocRef, dataToSave);
             toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
 
         } else {
             addDocumentNonBlocking(coursesRef, {
-                ...values,
-                sectionId: managingCoursesForSection.id,
-                schoolId,
+                ...dataToSave,
                 createdAt: serverTimestamp(),
             });
             toast({ title: "Curso Asignado", description: "El curso ha sido asignado a la sección." });
@@ -669,11 +697,6 @@ function SectionsManager() {
         setEditingCourse(null);
         courseAssignmentForm.reset({ subjectId: '', teacherId: '', schedule: '' });
     };
-
-    // Memos for data mapping
-    const gradesMap = React.useMemo(() => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {}, [grades]);
-    const subjectsMap = React.useMemo(() => subjects?.reduce((acc, subject) => ({ ...acc, [subject.id]: subject.name }), {} as Record<string, string>) || {}, [subjects]);
-    const teachersMap = React.useMemo(() => teachers?.reduce((acc, teacher) => ({ ...acc, [teacher.id]: `${teacher.firstName} ${teacher.lastName}` }), {} as Record<string, string>) || {}, [teachers]);
 
     const sectionCourses = React.useMemo(() => {
         if (!managingCoursesForSection || !allCourses) return [];
@@ -710,7 +733,7 @@ function SectionsManager() {
                                 sections.map((section) => (
                                     <TableRow key={section.id}>
                                         <TableCell className="font-medium">{section.name}</TableCell>
-                                        <TableCell>{gradesMap[section.gradeId] || 'N/A'}</TableCell>
+                                        <TableCell>{section.gradeName || 'N/A'}</TableCell>
                                         <TableCell>{section.createdAt ? new Date(section.createdAt.toDate()).toLocaleDateString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="outline" size="sm" onClick={() => handleManageCoursesClick(section)} className="mr-2">
@@ -836,8 +859,8 @@ function SectionsManager() {
                                     ) : sectionCourses.length > 0 ? (
                                         sectionCourses.map(course => (
                                             <TableRow key={course.id}>
-                                                <TableCell>{subjectsMap[course.subjectId] || 'N/A'}</TableCell>
-                                                <TableCell>{teachersMap[course.teacherId] || 'N/A'}</TableCell>
+                                                <TableCell>{course.subjectName || 'N/A'}</TableCell>
+                                                <TableCell>{course.teacherName || 'N/A'}</TableCell>
                                                 <TableCell>{course.schedule}</TableCell>
                                                 <TableCell className="text-right">
                                                     <DropdownMenu>
