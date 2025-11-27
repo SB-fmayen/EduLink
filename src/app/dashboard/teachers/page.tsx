@@ -45,7 +45,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { initializeApp, deleteApp, FirebaseOptions } from "firebase/app";
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
@@ -191,8 +191,8 @@ export default function TeachersPage() {
 
   const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
     if (!adminSchoolId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
-      return;
+        toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
+        return;
     }
 
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
@@ -200,55 +200,53 @@ export default function TeachersPage() {
     let newUserId = '';
 
     try {
-      // 1. Crear una instancia de app secundaria para crear el usuario en Auth sin afectar la sesión actual del admin.
-      secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
-      const secondaryAuth = getAuth(secondaryApp);
-      
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-      newUserId = userCredential.user.uid;
+        secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
+        const secondaryAuth = getAuth(secondaryApp);
+        
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
+        newUserId = userCredential.user.uid;
 
-      // 2. El administrador (usando la instancia principal de Firestore) crea los documentos necesarios.
-      const batch = writeBatch(firestore);
+        const batch = writeBatch(firestore);
 
-      // Crear el documento de perfil en /users
-      const userPayload: Omit<UserData, 'id'> = {
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          role: 'teacher',
-          schoolId: adminSchoolId,
-      };
-      const userDocRef = doc(firestore, 'users', newUserId);
-      batch.set(userDocRef, userPayload);
-      
-      // Crear la referencia en la subcolección de la escuela
-      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUserId);
-      batch.set(schoolTeacherRef, { id: newUserId });
+        const userPayload: Omit<UserData, 'id'> = {
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            role: 'teacher',
+            schoolId: adminSchoolId,
+        };
+        const userDocRef = doc(firestore, 'users', newUserId);
+        batch.set(userDocRef, userPayload);
+        
+        const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUserId);
+        batch.set(schoolTeacherRef, { id: newUserId });
 
-      // 3. Ejecutar las operaciones en Firestore.
-      await batch.commit();
+        await batch.commit();
       
-      toast({ 
-          title: 'Profesor Creado', 
-          description: 'La cuenta y el perfil del profesor han sido creados correctamente.' 
-      });
-      setIsNewTeacherDialogOpen(false);
-      newTeacherForm.reset();
+        toast({ 
+            title: 'Profesor Creado', 
+            description: 'La cuenta y el perfil del profesor han sido creados correctamente.' 
+        });
+        setIsNewTeacherDialogOpen(false);
+        newTeacherForm.reset();
 
     } catch (error: any) {
-      if (error.code === 'auth/email-already-in-use') {
-        newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
-      } else {
-        console.error("Error al crear profesor:", error);
-        toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
-      }
+        if (error.code === 'auth/email-already-in-use') {
+            newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
+        } else {
+            console.error("Error al crear profesor:", error);
+            toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
+        }
     } finally {
-      // 4. Limpiar la app secundaria.
-      if (secondaryApp) {
-        await deleteApp(secondaryApp);
-      }
+        if (secondaryApp) {
+            const secondaryAuth = getAuth(secondaryApp);
+            if (secondaryAuth.currentUser) {
+                await signOut(secondaryAuth);
+            }
+            await deleteApp(secondaryApp);
+        }
     }
-  };
+};
 
   return (
     <div className="flex flex-col gap-6">
