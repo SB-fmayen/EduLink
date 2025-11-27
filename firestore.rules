@@ -60,16 +60,24 @@ service cloud.firestore {
     function isTeacherForSectionQuery(schoolId) {
       // 1. The user must be a teacher.
       let isTeacher = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
-      // 2. The query MUST filter by 'sectionId'.
-      let hasSectionIdFilter = request.query.where.keys().hasAll(['sectionId']);
-      // 3. The query MUST NOT have more filters than allowed (only sectionId and role).
-      let allowedFilters = ['sectionId', 'role'];
-      let hasOnlyAllowedFilters = request.query.where.keys().hasOnly(allowedFilters);
       
-      if (!isTeacher || !hasSectionIdFilter || !hasOnlyAllowedFilters) {
+      // 2. The query MUST filter by 'sectionId', 'role', and 'schoolId'.
+      let allowedFilters = ['sectionId', 'role', 'schoolId'];
+      let hasRequiredFilters = request.query.where.keys().hasAll(allowedFilters);
+      let hasOnlyAllowedFilters = request.query.where.keys().hasOnly(allowedFilters);
+
+      if (!isTeacher || !hasRequiredFilters || !hasOnlyAllowedFilters) {
         return false;
       }
       
+      // 3. The queried values must be correct ('student' role, correct schoolId).
+      let isQueryingStudents = request.query.where.get('role')[2] == 'student';
+      let isQueryingCorrectSchool = request.query.where.get('schoolId')[2] == schoolId;
+      
+      if (!isQueryingStudents || !isQueryingCorrectSchool) {
+        return false;
+      }
+
       // 4. The teacher must be assigned to at least one course in the queried section.
       let queriedSectionId = request.query.where.get('sectionId')[2]; // [field, op, value]
       
