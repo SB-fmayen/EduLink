@@ -534,18 +534,15 @@ function SectionsManager() {
     const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
     const teachersQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        // This query now filters only by role. We will filter by schoolId on the client.
-        return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
-    }, [firestore]);
-    const { data: allTeachers } = useCollection<UserData>(teachersQuery);
-
-    // Client-side filtering for teachers of the correct school
-    const teachers = React.useMemo(() => {
-        if (!allTeachers || !schoolId) return [];
-        return allTeachers.filter(t => t.schoolId === schoolId);
-    }, [allTeachers, schoolId]);
-
+        if (!firestore || !schoolId) return null;
+        // This query now requires a composite index.
+        return query(
+            collection(firestore, 'users'), 
+            where('schoolId', '==', schoolId), 
+            where('role', '==', 'teacher')
+        );
+    }, [firestore, schoolId]);
+    const { data: teachers } = useCollection<UserData>(teachersQuery);
 
     const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
     const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);

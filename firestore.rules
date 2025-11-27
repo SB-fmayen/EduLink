@@ -125,8 +125,8 @@ service cloud.firestore {
       // Users can read their own profile. Admins can read any profile.
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
-      // Admins can list users if the query is scoped by 'role'.
-      allow list: if isAdmin(userProfile) && 'role' in request.query.where;
+      // Admins can list users if the query is scoped by 'role' and 'schoolId'.
+      allow list: if isAdmin(userProfile) && 'role' in request.query.where && 'schoolId' in request.query.where;
 
       // New users can create their own profile.
       allow create: if isOwner(userId);
