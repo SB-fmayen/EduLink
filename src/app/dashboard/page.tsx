@@ -13,6 +13,7 @@ import { MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // --- Interfaces para los datos ---
 interface UserProfile {
@@ -31,11 +32,23 @@ interface Course {
     subjectName?: string;
     sectionId: string;
     teacherId: string;
+    gradeId?: string; // Asumiendo que los cursos pueden tener gradeId
 }
 
 interface Subject {
     id: string;
     name: string;
+}
+
+interface GradeData {
+    id: string;
+    name: string;
+}
+
+interface SectionData {
+    id: string;
+    name: string;
+    gradeId: string;
 }
 
 interface CourseCardProps {
@@ -183,6 +196,24 @@ function AdminParentDashboard() {
 function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserProfile }) {
   const firestore = useFirestore();
 
+  // Estados para los filtros
+  const [selectedGrade, setSelectedGrade] = React.useState('all');
+  const [selectedSection, setSelectedSection] = React.useState('all');
+
+  // Cargar datos para los filtros
+  const gradesRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/grades`) : null, [firestore, profile.schoolId]);
+  const { data: grades } = useCollection<GradeData>(gradesRef);
+  
+  const sectionsRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/sections`) : null, [firestore, profile.schoolId]);
+  const { data: allSections } = useCollection<SectionData>(sectionsRef);
+  
+  // Filtrar secciones basadas en el grado seleccionado
+  const filteredSections = React.useMemo(() => {
+    if (selectedGrade === 'all') return allSections;
+    return allSections?.filter(section => section.gradeId === selectedGrade) || [];
+  }, [selectedGrade, allSections]);
+
+
   // Lógica para estudiantes
   const studentCoursesRef = useMemoFirebase(() => {
     if (profile.role === 'student') {
@@ -204,21 +235,73 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
   }, [firestore, user, profile.role, profile.schoolId]);
   const { data: teacherCourses, isLoading: isLoadingTeacherCourses } = useCollection<Course>(teacherCoursesQuery);
 
-  const courseIds = React.useMemo(() => {
-    if (profile.role === 'student' && studentCourses) {
-        return studentCourses.map(sc => sc.courseId);
+  const sectionsMap = React.useMemo(() => allSections?.reduce((acc, section) => {
+        acc[section.id] = section;
+        return acc;
+    }, {} as Record<string, SectionData>)
+  , [allSections]);
+
+
+  const filteredCourses = React.useMemo(() => {
+    let coursesToFilter = profile.role === 'student' ? studentCourses : teacherCourses;
+    if (!coursesToFilter || !sectionsMap) return [];
+    
+    let courseIds: string[] = [];
+
+    if (profile.role === 'student') {
+      courseIds = (coursesToFilter as StudentCourse[]).map(sc => sc.courseId);
+      // Para estudiantes, no aplicamos filtro de UI, solo mostramos sus cursos
+      return courseIds;
     }
-    if (profile.role === 'teacher' && teacherCourses) {
-        return teacherCourses.map(tc => tc.id);
+
+    let finalCourses = coursesToFilter as Course[];
+
+    // Aplicar filtro de grado
+    if (selectedGrade !== 'all') {
+      finalCourses = finalCourses.filter(course => {
+        const section = sectionsMap[course.sectionId];
+        return section && section.gradeId === selectedGrade;
+      });
     }
-    return [];
-  }, [profile.role, studentCourses, teacherCourses]);
+
+    // Aplicar filtro de sección
+    if (selectedSection !== 'all') {
+      finalCourses = finalCourses.filter(course => course.sectionId === selectedSection);
+    }
+
+    return finalCourses.map(c => c.id);
+
+  }, [profile.role, studentCourses, teacherCourses, selectedGrade, selectedSection, sectionsMap]);
 
   const isLoading = isLoadingStudentCourses || isLoadingTeacherCourses;
 
   return (
     <>
-      <h1 className="text-3xl font-bold tracking-tight mb-6">Tablero</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Tablero</h1>
+        {(profile.role === 'teacher' || profile.role === 'admin') && (
+            <div className="flex items-center gap-2">
+                <Select value={selectedGrade} onValueChange={(value) => { setSelectedGrade(value); setSelectedSection('all'); }}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filtrar por grado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todos los grados</SelectItem>
+                        {grades?.map(grade => <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={selectedGrade === 'all' && filteredSections.length === 0}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filtrar por sección" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todas las secciones</SelectItem>
+                        {filteredSections.map(section => <SelectItem key={section.id} value={section.id}>{section.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </div>
+        )}
+      </div>
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {[...Array(4)].map((_, i) => (
@@ -238,10 +321,10 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {courseIds.length > 0 ? (
-            courseIds.map(id => <CourseCard key={id} courseId={id} schoolId={profile.schoolId} />)
+          {filteredCourses.length > 0 ? (
+            filteredCourses.map(id => <CourseCard key={id} courseId={id} schoolId={profile.schoolId} />)
           ) : (
-            <p>No tienes cursos asignados.</p>
+            <p className="text-muted-foreground col-span-full text-center py-10">No tienes cursos que coincidan con los filtros seleccionados.</p>
           )}
         </div>
       )}
@@ -260,7 +343,9 @@ export default function DashboardPage() {
   if (isProfileLoading || !userProfile) {
     return (
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-6">Panel de Control</h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
              {[...Array(3)].map((_, i) => (
                  <Card key={i}>
