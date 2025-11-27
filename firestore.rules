@@ -82,7 +82,8 @@ service cloud.firestore {
       }
 
       match /courses/{courseId} {
-        allow get, list: if isMemberOfSchool(schoolId);
+        allow get: if isMemberOfSchool(schoolId);
+        allow list: if isMemberOfSchool(schoolId) || isAdmin();
         allow create: if isMemberOfSchool(schoolId) || isAdmin();
         allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin()) && resource != null;
       }
@@ -116,8 +117,7 @@ service cloud.firestore {
       // Allow admins to get any user, and users to get their own profile
       allow get: if isOwner(userId) || isAdmin();
       
-      // Admins can list all users. Teachers can list all students in their school.
-      // Filtering by section is handled on the client.
+      // Admins can list all users. Teachers can list students in their school if they provide a correct query.
       allow list: if isAdmin() || (isTeacher() && request.query.where.schoolId[2] == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId && request.query.where.role[2] == 'student');
 
       allow create: if isOwner(userId);
