@@ -92,6 +92,7 @@ const newStudentFormSchema = z.object({
 
 export default function StudentsPage() {
   const firestore = useFirestore();
+  const mainAuth = useAuth();
   const { user } = useUser();
 
   const userDocRef = useMemoFirebase(() => (user ? doc(firestore, `users/${user.uid}`) : null), [user, firestore]);
@@ -162,15 +163,14 @@ export default function StudentsPage() {
     try {
         secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
         const secondaryAuth = getAuth(secondaryApp);
-        const secondaryFirestore = getFirestore(secondaryApp);
-
+        
         const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
         newStudentId = userCredential.user.uid;
         
+        const batch = writeBatch(firestore);
+
         const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
-        await setDoc(schoolStudentRef, { id: newStudentId });
-        
-        await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
+        batch.set(schoolStudentRef, { id: newStudentId });
         
         const userPayload: Omit<UserData, 'id'> = {
             firstName: values.firstName,
@@ -179,9 +179,10 @@ export default function StudentsPage() {
             role: 'student',
             schoolId: schoolId,
         };
+        const userDocRef = doc(firestore, 'users', newStudentId);
+        batch.set(userDocRef, userPayload);
         
-        const userDocRef = doc(secondaryFirestore, 'users', newStudentId);
-        await setDoc(userDocRef, userPayload);
+        await batch.commit();
       
       toast({ 
         title: 'Estudiante Creado', 
@@ -192,11 +193,6 @@ export default function StudentsPage() {
 
     } catch (error: any) {
       console.error("Error creating student:", error);
-      if (newStudentId) {
-          const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
-          await deleteDoc(schoolStudentRef).catch(e => console.error("Cleanup failed:", e));
-      }
-
       if (error.code === 'auth/email-already-in-use') {
         newStudentForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
       } else {

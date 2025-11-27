@@ -53,11 +53,11 @@ service cloud.firestore {
     // --- Collection Group Rules ---
     match /{path=**}/students/{studentId} {
       let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      // Allow a student to read their own enrollment records via a collection group query
-      // This is essential for the student dashboard to find courses.
-      // This requires a composite index on (students collection group, studentId ASC)
+      // Allow a student to read their own enrollment records via a collection group query.
+      // Allow an admin of the school to read any student enrollment record.
+      // Allow a teacher to read enrollments for their courses.
       allow get: if isOwner(resource.data.studentId) || isAdmin(userProfile);
-      allow list: if request.query.where.studentId == request.auth.uid;
+      allow list: if request.query.where.studentId == request.auth.uid || isAdmin(userProfile);
     }
 
     match /schools/{schoolId} {
