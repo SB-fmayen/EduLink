@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -92,7 +93,8 @@ function StudentListTab({ courseId, schoolId, hasPermission }: { courseId: strin
     const studentProfilesQuery = useMemoFirebase(() => {
         if (studentIds === null) return null; // Still waiting for enrolled students
         if (studentIds.length === 0) return null; // No students to query
-        return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
+        // Firestore 'in' queries are limited to 30 items. For larger classes, pagination would be needed.
+        return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds.slice(0, 30)));
     }, [firestore, studentIds]);
 
     const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
@@ -238,4 +240,3 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         </div>
     );
 }
-

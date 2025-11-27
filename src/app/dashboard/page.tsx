@@ -4,7 +4,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useDoc, useUser, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
-import { doc, collection, query, where, getDocs, collectionGroup } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, collectionGroup, documentId } from 'firebase/firestore';
 import { Role } from '@/lib/roles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Users, Activity, FileText, MessageSquare, Bell, BarChart2 } from 'lucide-react';
@@ -20,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface UserProfile {
   role: Role;
   schoolId: string;
+  firstName: string;
+  lastName: string;
 }
 
 interface Course {
@@ -29,6 +31,7 @@ interface Course {
     sectionId: string;
     teacherId: string;
     gradeId?: string; // Asumiendo que los cursos pueden tener gradeId
+    sectionName?: string;
 }
 
 interface SectionData {
@@ -105,7 +108,7 @@ function CourseCard({ courseId, schoolId }: CourseCardProps) {
             <h3 className="font-semibold text-primary truncate" title={course.subjectName}>
                 {course.subjectName || 'Curso sin nombre'}
             </h3>
-            <p className="text-sm text-muted-foreground">{course.id}</p>
+            <p className="text-sm text-muted-foreground">{course.sectionName}</p>
             <p className="text-xs text-muted-foreground flex-grow">2-Semestre-Trimestre</p>
             <div className="flex items-center gap-4 text-muted-foreground pt-4">
               <BarChart2 className="h-5 w-5 hover:text-primary cursor-pointer" />
@@ -121,7 +124,15 @@ function CourseCard({ courseId, schoolId }: CourseCardProps) {
 
 
 // --- Vistas del Dashboard ---
-function AdminParentDashboard() {
+function AdminParentDashboard({ profile }: { profile: UserProfile }) {
+  const firestore = useFirestore();
+
+  const studentsQuery = useMemoFirebase(() => {
+    if (!profile.schoolId) return null;
+    return query(collection(firestore, 'users'), where('schoolId', '==', profile.schoolId), where('role', '==', 'student'));
+  }, [profile.schoolId, firestore]);
+  const { data: students, isLoading: isLoadingStudents } = useCollection(studentsQuery);
+
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
@@ -133,9 +144,9 @@ function AdminParentDashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1,254</div>
+            {isLoadingStudents ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold">{students?.length || 0}</div>}
             <p className="text-xs text-muted-foreground">
-              +20.1% desde el último mes
+              En tu escuela
             </p>
           </CardContent>
         </Card>
@@ -188,57 +199,19 @@ function AdminParentDashboard() {
 function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserProfile }) {
   const firestore = useFirestore();
 
-  const [selectedGrade, setSelectedGrade] = React.useState('all');
-  const [selectedSection, setSelectedSection] = React.useState('all');
-  
-  // States for student and teacher courses
-  const [studentCourseIds, setStudentCourseIds] = React.useState<string[] | null>(null);
-  const [isLoadingStudentCourses, setIsLoadingStudentCourses] = React.useState(true);
-  
-  // Data for filters
-  const gradesRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/grades`) : null, [firestore, profile.schoolId]);
-  const { data: grades } = useCollection<GradeData>(gradesRef);
-  
-  const sectionsRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/sections`) : null, [firestore, profile.schoolId]);
-  const { data: allSections } = useCollection<SectionData>(sectionsRef);
-  
-  const gradesMap = React.useMemo(() => {
-    if (!grades) return {};
-    return grades.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>);
-  }, [grades]);
-
-  const filteredSections = React.useMemo(() => {
-    if (!allSections) return [];
-    if (selectedGrade === 'all') return allSections;
-    return allSections.filter(section => section.gradeId === selectedGrade);
-  }, [selectedGrade, allSections]);
-
   // Fetch student enrollments using collectionGroup query
   // This requires a composite index: (students collection group, studentId ASC)
-  React.useEffect(() => {
-    if (profile.role !== 'student' || !user) {
-        setIsLoadingStudentCourses(false);
-        return;
-    }
-    
-    const fetchStudentEnrollments = async () => {
-        setIsLoadingStudentCourses(true);
-        const enrollmentsQuery = query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid));
-        try {
-            const snapshot = await getDocs(enrollmentsQuery);
-            const courseIds = snapshot.docs.map(doc => doc.ref.parent.parent!.id);
-            setStudentCourseIds(courseIds);
-        } catch (e) {
-            console.error("Failed to fetch student courses. This might require a Firestore index.", e);
-            setStudentCourseIds([]);
-        } finally {
-            setIsLoadingStudentCourses(false);
-        }
-    }
-    
-    fetchStudentEnrollments();
+  const studentEnrollmentsQuery = useMemoFirebase(() => {
+    if (profile.role !== 'student') return null;
+    return query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid));
   }, [firestore, user, profile.role]);
+  
+  const { data: studentEnrollments, isLoading: isLoadingEnrollments } = useCollection(studentEnrollmentsQuery);
 
+  const studentCourseIds = React.useMemo(() => {
+    if (!studentEnrollments) return null;
+    return studentEnrollments.map(doc => doc.ref.parent.parent!.id);
+  }, [studentEnrollments]);
 
   // Lógica para profesores
   const teacherCoursesQuery = useMemoFirebase(() => {
@@ -252,72 +225,19 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
   }, [firestore, user, profile.role, profile.schoolId]);
   const { data: teacherCourses, isLoading: isLoadingTeacherCourses } = useCollection<Course>(teacherCoursesQuery);
 
-  const sectionsMap = React.useMemo(() => allSections?.reduce((acc, section) => {
-        acc[section.id] = section;
-        return acc;
-    }, {} as Record<string, SectionData>)
-  , [allSections]);
 
+  const coursesToDisplay = React.useMemo(() => {
+    if (profile.role === 'student') return studentCourseIds;
+    if (profile.role === 'teacher') return teacherCourses?.map(c => c.id) || null;
+    return null;
+  }, [profile.role, studentCourseIds, teacherCourses]);
 
-  const filteredCourses = React.useMemo(() => {
-    if (profile.role === 'student') {
-        return studentCourseIds || [];
-    }
-
-    if (profile.role === 'teacher') {
-        if (!teacherCourses || !sectionsMap) return [];
-        let finalCourses = teacherCourses;
-
-        if (selectedGrade !== 'all') {
-          finalCourses = finalCourses.filter(course => {
-            const section = sectionsMap[course.sectionId];
-            return section && section.gradeId === selectedGrade;
-          });
-        }
-
-        if (selectedSection !== 'all') {
-          finalCourses = finalCourses.filter(course => course.sectionId === selectedSection);
-        }
-
-        return finalCourses.map(c => c.id);
-    }
-    
-    return [];
-
-  }, [profile.role, studentCourseIds, teacherCourses, selectedGrade, selectedSection, sectionsMap]);
-
-  const isLoading = isLoadingStudentCourses || isLoadingTeacherCourses;
+  const isLoading = isLoadingEnrollments || isLoadingTeacherCourses;
 
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Tablero</h1>
-        {(profile.role === 'teacher' || profile.role === 'admin') && (
-            <div className="flex items-center gap-2">
-                <Select value={selectedGrade} onValueChange={(value) => { setSelectedGrade(value); setSelectedSection('all'); }}>
-                    <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filtrar por grado" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Todos los grados</SelectItem>
-                        {grades?.map(grade => <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>)}
-                    </SelectContent>
-                </Select>
-                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={filteredSections.length === 0}>
-                    <SelectTrigger className="w-[220px]">
-                        <SelectValue placeholder="Filtrar por sección" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Todas las secciones</SelectItem>
-                        {filteredSections.map(section => (
-                            <SelectItem key={section.id} value={section.id}>
-                                {gradesMap[section.gradeId] || 'Grado desc.'} - {section.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-        )}
+        <h1 className="text-3xl font-bold tracking-tight">Mis Cursos</h1>
       </div>
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -338,12 +258,12 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredCourses.length > 0 ? (
-            filteredCourses.map(id => <CourseCard key={id} courseId={id} schoolId={profile.schoolId} />)
+          {coursesToDisplay && coursesToDisplay.length > 0 ? (
+            coursesToDisplay.map(id => <CourseCard key={id} courseId={id} schoolId={profile.schoolId} />)
           ) : (
              <div className="col-span-full text-center py-10">
                 <p className="text-muted-foreground">
-                    {profile.role === 'student' ? "Aún no estás inscrito en ningún curso. Si esto es un error, contacta a tu administrador." : "No tienes cursos que coincidan con los filtros seleccionados."}
+                    {profile.role === 'student' ? "Aún no estás inscrito en ningún curso. Si esto es un error, contacta a tu administrador." : "No tienes cursos asignados."}
                 </p>
              </div>
           )}
@@ -355,17 +275,17 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
 
 // --- Componente Principal ---
 export default function DashboardPage() {
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
 
-  if (isProfileLoading || !userProfile) {
+  if (isUserLoading || isProfileLoading || !userProfile) {
     return (
         <div>
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
+             <Skeleton className="h-9 w-48" />
           </div>
           <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
              {[...Array(3)].map((_, i) => (
@@ -389,8 +309,8 @@ export default function DashboardPage() {
   if (role === 'admin' || role === 'parent') {
     return (
         <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-6">Panel de Control</h1>
-            <AdminParentDashboard />
+            <h1 className="text-3xl font-bold tracking-tight mb-6">Bienvenido, {userProfile.firstName}</h1>
+            <AdminParentDashboard profile={userProfile} />
         </div>
     );
   }

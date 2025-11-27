@@ -1,0 +1,199 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions to abstract and simplify rule logic.
+
+    /**
+     * Returns true if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Returns true if the requesting user's UID matches the provided userId.
+     * This is the foundation of the user-ownership model.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    /**
+     * Returns true if the user's role is admin.
+     * Reads the user's profile from the /users collection.
+     */
+    function isAdmin(userProfile) {
+        return isSignedIn() && userProfile.data.role == 'admin';
+    }
+
+    /**
+     * Checks if the user's schoolId from their profile matches the target schoolId.
+     * This function no longer performs a `get()`. It relies on the user profile
+     * being passed in as an argument.
+     */
+    function isMemberOfSchool(userProfile, schoolId) {
+      return isSignedIn() && userProfile.data.schoolId == schoolId;
+    }
+    
+    /**
+     * Returns true if the user's role is 'teacher'.
+     * Relies on the user profile being passed in as an argument.
+     */
+    function isTeacher(userProfile) {
+      return isSignedIn() && userProfile.data.role == 'teacher';
+    }
+    
+    function isTeacherOfCourse(schoolId, courseId) {
+      let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
+      return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+    }
+    
+    // --- Collection Group Rules ---
+    match /{path=**}/students/{studentId} {
+      // Allow a student to read their own enrollment records via a collection group query
+      // This is essential for the student dashboard to find courses.
+      // This requires a composite index on (students collection group, studentId ASC)
+      allow get, list: if isOwner(resource.data.studentId) || request.query.where.studentId == request.auth.uid;
+    }
+
+    match /schools/{schoolId} {
+      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      // Admins can manage schools, any signed-in user can view them.
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin(userProfile);
+
+      match /grades/{gradeId} {
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create, update, delete: if isAdmin(userProfile);
+      }
+
+      match /sections/{sectionId} {
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create, update, delete: if isAdmin(userProfile);
+      }
+
+      match /subjects/{subjectId} {
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create, update, delete: if isAdmin(userProfile);
+      }
+
+      match /courses/{courseId} {
+        allow get: if isMemberOfSchool(userProfile, schoolId);
+        allow list: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
+        allow create: if isAdmin(userProfile);
+        allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile));
+
+        match /students/{studentId} {
+           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile) || isOwner(studentId);
+           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
+        }
+      }
+
+      match /assignments/{assignmentId} {
+        function isTeacherOfCourseForAssignment(courseId) {
+            let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
+            return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+        }
+        
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForAssignment(request.resource.data.courseId);
+        allow update, delete: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForAssignment(resource.data.courseId);
+      }
+
+      match /onlineExams/{onlineExamId} {
+        function isTeacherOfCourseForExam(courseId) {
+            let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
+            return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+        }
+
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForExam(request.resource.data.courseId);
+        allow update, delete: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForExam(resource.data.courseId);
+
+        match /examQuestions/{examQuestionId} {
+          function isTeacherOfParentExam() {
+            let courseId = get(/databases/$(database)/documents/schools/$(schoolId)/onlineExams/$(onlineExamId)).data.courseId;
+            let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
+            return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+          }
+
+          allow get, list: if isMemberOfSchool(userProfile, schoolId);
+          allow create: if isTeacherOfParentExam() || isAdmin(userProfile);
+          allow update, delete: if (isTeacherOfParentExam() || isAdmin(userProfile));
+        }
+      }
+    }
+
+    match /users/{userId} {
+      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      // Users can read their own profile. Admins can read any profile.
+      allow get: if isOwner(userId) || isAdmin(userProfile);
+      
+      // Admins can list users if the query is scoped by 'role' and 'schoolId'.
+      // This requires a composite index on (schoolId ASC, role ASC).
+      allow list: if isAdmin(userProfile) && request.query.where.keys().hasAll(['schoolId', 'role']);
+
+      // New users can create their own profile.
+      allow create: if isOwner(userId);
+      // Users can update their own profile, admins can update any.
+      allow update: if isOwner(userId) || isAdmin(userProfile);
+      // Only admins or the user themselves can delete a profile.
+      allow delete: if isOwner(userId) || isAdmin(userProfile);
+
+
+      match /tuitionPayments/{tuitionPaymentId} {
+        allow get, list: if isOwner(userId) || isAdmin(userProfile);
+        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
+        allow update, delete: if (isOwner(userId) || isAdmin(userProfile));
+      }
+
+      match /submittedAssignments/{submittedAssignmentId} {
+        function canAccessSubmission() {
+          let assignmentDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/assignments/$(resource.data.assignmentId));
+          let courseDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/courses/$(assignmentDoc.data.courseId));
+          return courseDoc.data.teacherId == request.auth.uid;
+        }
+
+        allow get: if isOwner(userId) || isAdmin(userProfile) || canAccessSubmission();
+        allow list: if isOwner(userId) || isAdmin(userProfile);
+        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
+        allow update, delete: if (isOwner(userId) || isAdmin(userProfile) || canAccessSubmission());
+      }
+
+      match /examAttempts/{examAttemptId} {
+        function canAccessExamAttempt() {
+          let examDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/onlineExams/$(resource.data.examId));
+          let courseDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/courses/$(examDoc.data.courseId));
+          return courseDoc.data.teacherId == request.auth.uid;
+        }
+
+        allow get: if isOwner(userId) || isAdmin(userProfile) || canAccessExamAttempt();
+        allow list: if isOwner(userId) || isAdmin(userProfile);
+        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
+        allow update, delete: if (isOwner(userId) || isAdmin(userProfile) || canAccessExamAttempt());
+      }
+
+      match /notifications/{notificationId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /chatMessages/{chatMessageId} {
+      function isParticipant() {
+        return isSignedIn() && (request.auth.uid == resource.data.senderId || request.auth.uid == resource.data.receiverId);
+      }
+      allow get: if isParticipant();
+      allow list: if false; // Disallow listing chat messages for security
+      allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.senderId);
+    }
+    
+  }
+}
