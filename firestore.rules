@@ -60,17 +60,19 @@ service cloud.firestore {
     function isTeacherForSectionQuery(schoolId) {
       // 1. The user must be a teacher.
       let isTeacher = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
-      
-      // 2. The query MUST filter by 'sectionId', 'role', and 'schoolId'.
-      let allowedFilters = ['sectionId', 'role', 'schoolId'];
-      let hasRequiredFilters = request.query.where.keys().hasAll(allowedFilters);
-      let hasOnlyAllowedFilters = request.query.where.keys().hasOnly(allowedFilters);
-
-      if (!isTeacher || !hasRequiredFilters || !hasOnlyAllowedFilters) {
+      if (!isTeacher) {
         return false;
       }
       
-      // 3. The queried values must be correct ('student' role, correct schoolId).
+      // 2. The query MUST filter by 'role', 'schoolId', and 'sectionId'.
+      let hasRequiredFilters = request.query.where.keys().hasAll(['role', 'schoolId', 'sectionId']);
+      let hasOnlyAllowedFilters = request.query.where.keys().hasOnly(['role', 'schoolId', 'sectionId']);
+
+      if (!hasRequiredFilters || !hasOnlyAllowedFilters) {
+          return false;
+      }
+      
+      // 3. The queried values must be correct: role must be 'student', and schoolId must match.
       let isQueryingStudents = request.query.where.get('role')[2] == 'student';
       let isQueryingCorrectSchool = request.query.where.get('schoolId')[2] == schoolId;
       
@@ -79,9 +81,9 @@ service cloud.firestore {
       }
 
       // 4. The teacher must be assigned to at least one course in the queried section.
-      let queriedSectionId = request.query.where.get('sectionId')[2]; // [field, op, value]
+      let queriedSectionId = request.query.where.get('sectionId')[2];
       
-      // Check if any course taught by this teacher belongs to the queried section.
+      // Use `exists` to check for a course that links the teacher to the queried section.
       return exists(
         /databases/$(database)/documents/schools/$(schoolId)/courses
           .where('teacherId', '==', request.auth.uid)
