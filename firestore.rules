@@ -44,57 +44,47 @@ service cloud.firestore {
     function isTeacher(userProfile) {
       return isSignedIn() && userProfile.data.role == 'teacher';
     }
+    
+    function isTeacherOfCourse(schoolId, courseId) {
+      let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
+      return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+    }
 
     match /schools/{schoolId} {
+      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+
       // Admins can manage schools, any signed-in user can view them.
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)));
+      allow create, update, delete: if isAdmin(userProfile);
 
       match /grades/{gradeId} {
-        // Let userProfile = get(...) inside the match block makes it reusable.
-        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
         allow create, update, delete: if isAdmin(userProfile);
       }
 
       match /sections/{sectionId} {
-        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
         allow create, update, delete: if isAdmin(userProfile);
       }
 
       match /subjects/{subjectId} {
-        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
         allow create, update, delete: if isAdmin(userProfile);
       }
 
       match /courses/{courseId} {
-        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-        
-        function isTeacherOfCourse() {
-          return isSignedIn() && get(path).data.teacherId == request.auth.uid;
-        }
-        
-        function isTeacherOfCourseById(courseId) {
-          let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
-          return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
-        }
-
         allow get: if isMemberOfSchool(userProfile, schoolId);
         allow list: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
         allow create: if isAdmin(userProfile);
-        allow update, delete: if (isTeacherOfCourse() || isAdmin(userProfile));
+        allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile));
 
         match /students/{studentId} {
-           allow get, list: if isTeacherOfCourseById(courseId) || isAdmin(userProfile);
-           allow create, update, delete: if isTeacherOfCourseById(courseId) || isAdmin(userProfile);
+           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
+           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
         }
       }
 
       match /assignments/{assignmentId} {
-        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-        
         function isTeacherOfCourseForAssignment(courseId) {
             let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
             return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
@@ -106,8 +96,6 @@ service cloud.firestore {
       }
 
       match /onlineExams/{onlineExamId} {
-        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-
         function isTeacherOfCourseForExam(courseId) {
             let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
             return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;

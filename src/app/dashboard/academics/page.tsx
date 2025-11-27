@@ -534,10 +534,10 @@ function SectionsManager() {
     const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
     const teachersQuery = useMemoFirebase(() => {
-        if (!schoolId) return null;
+        if (!firestore) return null;
         // This query now filters only by role. We will filter by schoolId on the client.
         return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
-    }, [schoolId, firestore]);
+    }, [firestore]);
     const { data: allTeachers } = useCollection<UserData>(teachersQuery);
 
     // Client-side filtering for teachers of the correct school
