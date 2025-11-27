@@ -51,7 +51,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { collection, doc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, query, where, getDocs, documentId } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -533,16 +533,21 @@ function SectionsManager() {
     const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
     const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
-    // This query now requires a composite index: (schoolId ASC, role ASC).
+    // Get teacher IDs from the new subcollection
+    const schoolTeachersRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/teachers`) : null, [schoolId, firestore]);
+    const { data: teacherRefs } = useCollection<{id: string}>(schoolTeachersRef);
+    
+    const teacherIds = React.useMemo(() => teacherRefs?.map(t => t.id) || [], [teacherRefs]);
+    
+    // Get teacher profiles from the main users collection
     const teachersQuery = useMemoFirebase(() => {
-        if (!firestore || !schoolId) return null;
-        return query(
-            collection(firestore, 'users'), 
-            where('schoolId', '==', schoolId), 
-            where('role', '==', 'teacher')
-        );
-    }, [firestore, schoolId]);
-    const { data: teachers, error: teachersError } = useCollection<UserData>(teachersQuery);
+        if (teacherIds.length > 0) {
+            return query(collection(firestore, 'users'), where(documentId(), 'in', teacherIds));
+        }
+        return null;
+    }, [teacherIds, firestore]);
+    const { data: teachers } = useCollection<UserData>(teachersQuery);
+
 
     const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
     const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
@@ -817,7 +822,7 @@ function SectionsManager() {
                                     <FormField control={courseAssignmentForm.control} name="subjectId" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Asignatura</FormLabel>
-                                            <Select onValueChange={field.onChange} value={field.value}>
+                                            <Select onValuechange={field.onChange} value={field.value}>
                                                 <FormControl><SelectTrigger><SelectValue placeholder="Selecciona asignatura" /></SelectTrigger></FormControl>
                                                 <SelectContent>
                                                     {subjects?.map((subject) => <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>)}
@@ -830,12 +835,13 @@ function SectionsManager() {
                                         <FormItem>
                                             <FormLabel>Profesor</FormLabel>
                                             <Select onValueChange={field.onChange} value={field.value}>
-                                                <FormControl><SelectTrigger><SelectValue placeholder={teachersError ? 'Error al cargar' : 'Selecciona profesor'} /></SelectTrigger></FormControl>
+                                                <FormControl><SelectTrigger><SelectValue placeholder={!teachers ? 'Cargando...' : 'Selecciona profesor'} /></SelectTrigger></FormControl>
                                                 <SelectContent>
                                                     {teachers?.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
-                                            {teachersError && <FormMessage>Error al cargar profesores. Asegúrate de que el índice de Firestore esté creado.</FormMessage>}
+                                            {!teachers && teacherIds.length > 0 && <p className="text-sm text-muted-foreground">Cargando perfiles de profesor...</p>}
+                                            {teacherIds.length === 0 && <p className="text-sm text-muted-foreground">No hay profesores en esta escuela.</p>}
                                             <FormMessage />
                                         </FormItem>
                                     )} />

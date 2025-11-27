@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -34,7 +35,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { toast } from '@/hooks/use-toast';
@@ -89,16 +90,17 @@ export default function StudentsPage() {
   const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('all');
 
   // --- Data fetching ---
-
-  const allStudentsInSchoolQuery = useMemoFirebase(() => {
-    if (!schoolId) return null;
-    return query(
-        collection(firestore, 'users'),
-        where('schoolId', '==', schoolId),
-        where('role', '==', 'student')
-    );
-  }, [schoolId, firestore]);
-  const { data: allStudents, isLoading: isStudentsLoading } = useCollection<UserData>(allStudentsInSchoolQuery);
+  const schoolStudentsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/students`) : null, [schoolId, firestore]);
+  const { data: studentRefs, isLoading: isStudentsLoading } = useCollection<{id: string}>(schoolStudentsRef);
+  const studentIds = React.useMemo(() => studentRefs?.map(s => s.id) || [], [studentRefs]);
+  
+  const studentProfilesQuery = useMemoFirebase(() => {
+      if (studentIds.length > 0) {
+          return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
+      }
+      return null;
+  }, [studentIds, firestore]);
+  const { data: allStudents, isLoading: isProfilesLoading } = useCollection<UserData>(studentProfilesQuery);
 
 
   const teacherCoursesQuery = useMemoFirebase(() => {
@@ -156,13 +158,15 @@ export default function StudentsPage() {
     if (userRole === 'admin') {
       return allStudents;
     }
-    // For teachers, filter students based on the selected section
     if (userRole === 'teacher') {
-      if (!selectedSectionFilter || selectedSectionFilter === 'all') return allStudents;
+      if (!selectedSectionFilter || selectedSectionFilter === 'all') {
+        const teacherSectionIds = new Set(teacherSections.map(s => s.id));
+        return allStudents.filter(student => student.sectionId && teacherSectionIds.has(student.sectionId));
+      }
       return allStudents.filter(student => student.sectionId === selectedSectionFilter);
     }
     return [];
-  }, [allStudents, userRole, selectedSectionFilter]);
+  }, [allStudents, userRole, selectedSectionFilter, teacherSections]);
 
 
   const handleAssignToSection = async () => {
@@ -184,6 +188,8 @@ export default function StudentsPage() {
       });
       return;
     }
+    
+    const oldSectionId = selectedStudent.sectionId;
 
     const coursesInSection = courses.filter((course) => course.sectionId === selectedSection);
     if (coursesInSection.length === 0) {
@@ -200,13 +206,27 @@ export default function StudentsPage() {
     
     const batch = writeBatch(firestore);
 
-    // Update the student's section and grade
+    // Update the student's section and grade in their main profile
     batch.update(studentDocRef, {
       sectionId: sectionData.id,
       gradeId: sectionData.gradeId,
     });
+    
+    // Create new student reference in the school's student list if not there
+    const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, selectedStudent.id);
+    batch.set(schoolStudentRef, { studentId: selectedStudent.id }, { merge: true });
+    
+    // If moving from another section, find old enrollments and remove them
+    if (oldSectionId && oldSectionId !== selectedSection) {
+        const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
+        for (const course of oldCourses) {
+            const oldEnrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
+            batch.delete(oldEnrollmentRef);
+        }
+    }
 
-    // Enroll the student in all courses for that section
+
+    // Enroll the student in all courses for the new section
     for (const course of coursesInSection) {
         const enrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
         batch.set(enrollmentRef, { studentId: selectedStudent.id });
@@ -216,7 +236,7 @@ export default function StudentsPage() {
         await batch.commit();
         toast({
           title: 'Estudiante Asignado',
-          description: `${selectedStudent.firstName} ha sido inscrito en los cursos y actualizado.`,
+          description: `${selectedStudent.firstName} ha sido inscrito en los cursos de la nueva sección.`,
         });
     } catch (error) {
         console.error("Error assigning student to section: ", error);
@@ -275,14 +295,14 @@ export default function StudentsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isStudentsLoading && (
+              {(isStudentsLoading || isProfilesLoading) && (
                  <TableRow>
                   <TableCell colSpan={5} className="text-center">
                     Cargando estudiantes...
                   </TableCell>
                 </TableRow>
               )}
-              {!isStudentsLoading && studentsToDisplay && studentsToDisplay.length > 0 ? (
+              {!(isStudentsLoading || isProfilesLoading) && studentsToDisplay && studentsToDisplay.length > 0 ? (
                 studentsToDisplay.map((student) => (
                   <TableRow key={student.id}>
                     <TableCell className="font-medium">
@@ -319,10 +339,10 @@ export default function StudentsPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              ) : !isStudentsLoading && (
+              ) : !(isStudentsLoading || isProfilesLoading) && (
                  <TableRow>
                   <TableCell colSpan={5} className="text-center h-24">
-                   {userRole === 'teacher' ? "Por favor, selecciona una sección para ver a los estudiantes." : "No hay estudiantes registrados."}
+                   {userRole === 'teacher' ? "Por favor, selecciona una sección para ver a los estudiantes." : "No hay estudiantes registrados en esta escuela."}
                   </TableCell>
                 </TableRow>
               )}

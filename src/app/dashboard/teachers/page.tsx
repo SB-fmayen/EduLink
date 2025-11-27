@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -34,7 +35,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, writeBatch } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { useRouter } from 'next/navigation';
@@ -43,7 +44,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -75,15 +75,11 @@ export default function TeachersPage() {
 
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
   const { data: userData } = useDoc<{ schoolId: string, role: Role }>(userDocRef);
-  const schoolId = userData?.schoolId;
   const userRole = userData?.role;
 
   const teachersQuery = useMemoFirebase(() => {
-    if (!schoolId) return null;
-    // Admins see all teachers; other roles might have different logic if needed.
-    // For now, only admins can access this page as per roles.ts.
     return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
-  }, [schoolId, firestore]);
+  }, [firestore]);
 
   const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
 
@@ -131,14 +127,45 @@ export default function TeachersPage() {
     router.push(`/dashboard/teachers/${teacherId}`);
   };
 
-  const onSubmit = (values: z.infer<typeof teacherFormSchema>) => {
+  const onSubmit = async (values: z.infer<typeof teacherFormSchema>) => {
     if (!selectedTeacher) return;
+
     const teacherDocRef = doc(firestore, 'users', selectedTeacher.id);
-    updateDocumentNonBlocking(teacherDocRef, values);
-    toast({
-        title: "Profesor Actualizado",
-        description: "Los datos del profesor han sido actualizados.",
-    });
+    const oldSchoolId = selectedTeacher.schoolId;
+    const newSchoolId = values.schoolId;
+
+    const batch = writeBatch(firestore);
+
+    // 1. Update the main user document
+    batch.update(teacherDocRef, values);
+
+    // 2. If school has changed, update the role-based subcollections
+    if (oldSchoolId !== newSchoolId) {
+        // Remove from old school's teachers subcollection
+        if (oldSchoolId) {
+            const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
+            batch.delete(oldTeacherRef);
+        }
+        // Add to new school's teachers subcollection
+        const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
+        batch.set(newTeacherRef, { teacherId: selectedTeacher.id });
+    }
+
+    try {
+        await batch.commit();
+        toast({
+            title: "Profesor Actualizado",
+            description: "Los datos del profesor han sido actualizados.",
+        });
+    } catch (error) {
+        console.error("Error updating teacher:", error);
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "No se pudo actualizar la información del profesor.",
+        });
+    }
+    
     setIsModifyDialogOpen(false);
   };
 
