@@ -43,3 +43,5 @@ Acceso para supervisar el progreso de sus hijos.
 - **Calificaciones**: Ver las calificaciones de su(s) hijo(s).
 - **Finanzas**: Ver el estado de cuenta y realizar pagos de la matrícula de su(s) hijo(s).
 - **Comunicación**: Comunicarse con los profesores de su(s) hijo(s).
+
+prueba
