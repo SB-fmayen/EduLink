@@ -195,16 +195,17 @@ export default function StudentsPage() {
     }
     
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
-    const secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
-    const secondaryAuth = getAuth(secondaryApp);
-    const secondaryFirestore = getFirestore(secondaryApp);
-
+    let secondaryApp;
     try {
+      secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
+      const secondaryAuth = getAuth(secondaryApp);
+      const secondaryFirestore = getFirestore(secondaryApp);
+
       // 1. Create the user in Authentication
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
-      // 2. Sign in the new user TEMPORARILY in the secondary app
+      // 2. Sign in the new user TEMPORARILY in the secondary app to get permissions
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
 
       // 3. Prepare user data and write to Firestore (as the new user)
@@ -236,10 +237,13 @@ export default function StudentsPage() {
       }
     } finally {
         // 4. Clean up: Sign out from the secondary app and delete it.
-        if (secondaryAuth.currentUser) {
-            await signOut(secondaryAuth);
+        if (secondaryApp) {
+            const secondaryAuth = getAuth(secondaryApp);
+            if (secondaryAuth.currentUser) {
+                await signOut(secondaryAuth);
+            }
+            await deleteApp(secondaryApp);
         }
-        await deleteApp(secondaryApp);
     }
   };
   
@@ -261,11 +265,14 @@ export default function StudentsPage() {
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
     const batch = writeBatch(firestore);
 
+    // Update user's section and grade
     batch.update(studentDocRef, { sectionId: sectionData.id, gradeId: sectionData.gradeId });
     
+    // Add student reference to the school's students subcollection
     const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, selectedStudent.id);
     batch.set(schoolStudentRef, { id: selectedStudent.id }, { merge: true });
     
+    // Remove from old courses if section is changed
     if (oldSectionId && oldSectionId !== selectedSection) {
         const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
         for (const course of oldCourses) {
@@ -274,6 +281,7 @@ export default function StudentsPage() {
         }
     }
 
+    // Add to new courses
     for (const course of coursesInSection) {
         const enrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
         batch.set(enrollmentRef, { studentId: selectedStudent.id });
@@ -283,7 +291,8 @@ export default function StudentsPage() {
         await batch.commit();
         toast({ title: 'Estudiante Asignado', description: `${selectedStudent.firstName} ha sido inscrito en la nueva sección.` });
     } catch (error) {
-        toast({ variant: "destructive", title: "Error de Asignación", description: "No se pudo completar la inscripción." });
+        console.error("Error assigning student to section:", error)
+        toast({ variant: "destructive", title: "Error de Asignación", description: "No se pudo completar la inscripción. Revisa los permisos." });
     }
     
     setIsAssignDialogOpen(false);

@@ -166,12 +166,14 @@ export default function TeachersPage() {
     const batch = writeBatch(firestore);
     batch.update(teacherDocRef, values);
 
+    // This part handles the reference document in the schools subcollection
     if (oldSchoolId && oldSchoolId !== newSchoolId) {
         const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
         batch.delete(oldTeacherRef);
     }
     
     const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
+    // Use set with merge to create or update the reference document
     batch.set(newTeacherRef, { id: selectedTeacher.id }, { merge: true });
 
     try {
@@ -195,11 +197,12 @@ export default function TeachersPage() {
     }
 
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
-    const secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
-    const secondaryAuth = getAuth(secondaryApp);
-    const secondaryFirestore = getFirestore(secondaryApp);
-
+    let secondaryApp;
     try {
+      secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
+      const secondaryAuth = getAuth(secondaryApp);
+      const secondaryFirestore = getFirestore(secondaryApp);
+      
       // 1. Create user in Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
@@ -244,10 +247,13 @@ export default function TeachersPage() {
       }
     } finally {
         // 4. Clean up
-        if (secondaryAuth.currentUser) {
-            await signOut(secondaryAuth);
+        if (secondaryApp) {
+            const secondaryAuth = getAuth(secondaryApp);
+            if (secondaryAuth.currentUser) {
+                await signOut(secondaryAuth);
+            }
+            await deleteApp(secondaryApp);
         }
-        await deleteApp(secondaryApp);
     }
   };
 
