@@ -167,10 +167,9 @@ function PlaceholderTab({ title }: { title: string }) {
 }
 
 
-export default function CourseDetailsPage({ params }: { params: { id: string } }) {
+export default function CourseDetailsPage({ params: { id: courseId } }: { params: { id: string } }) {
     const firestore = useFirestore();
     const { user } = useUser();
-    const courseId = params.id;
     
     const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
     const { data: userData, isLoading: isUserLoading } = useDoc<{ schoolId: string }>(userDocRef);
