@@ -69,12 +69,14 @@ service cloud.firestore {
       
       // Rules for role-based subcollections
       match /teachers/{teacherId} {
-        allow read: if isMemberOfSchool(userProfile, schoolId);
+        allow get: if isMemberOfSchool(userProfile, schoolId);
+        allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
         allow write: if isAdmin(userProfile); // Only admins can manage the teacher list
       }
 
       match /students/{studentId} {
-        allow read: if isMemberOfSchool(userProfile, schoolId);
+        allow get: if isMemberOfSchool(userProfile, schoolId);
+        allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
         allow write: if isAdmin(userProfile); // Only admins can manage the student list for now
       }
 
