@@ -191,21 +191,31 @@ export default function TeachersPage() {
 
   const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
     if (!adminSchoolId) {
-        toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
+        toast({ variant: 'destructive', title: 'Error de Configuración', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
         return;
     }
 
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
     let secondaryApp;
-    let newUserId = '';
+    let userCredential;
 
     try {
         secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
         const secondaryAuth = getAuth(secondaryApp);
-        
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-        newUserId = userCredential.user.uid;
+        userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
+    } catch (error: any) {
+        console.error("Error al crear cuenta de profesor en Auth:", error);
+        if (error.code === 'auth/email-already-in-use') {
+            newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
+        } else {
+            toast({ variant: 'destructive', title: 'Error de Autenticación', description: `No se pudo crear la cuenta: ${error.message}` });
+        }
+        if (secondaryApp) await deleteApp(secondaryApp);
+        return; 
+    }
 
+    try {
+        const newUserId = userCredential.user.uid;
         const batch = writeBatch(firestore);
 
         const userPayload: Omit<UserData, 'id'> = {
@@ -224,19 +234,16 @@ export default function TeachersPage() {
         await batch.commit();
       
         toast({ 
-            title: 'Profesor Creado', 
+            title: 'Profesor Creado Exitosamente', 
             description: 'La cuenta y el perfil del profesor han sido creados correctamente.' 
         });
         setIsNewTeacherDialogOpen(false);
         newTeacherForm.reset();
 
     } catch (error: any) {
-        if (error.code === 'auth/email-already-in-use') {
-            newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
-        } else {
-            console.error("Error al crear profesor:", error);
-            toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
-        }
+        console.error("Error al guardar perfil de profesor en Firestore:", error);
+        toast({ variant: 'destructive', title: 'Error de Base de Datos', description: `No se pudo guardar el perfil del profesor: ${error.message}` });
+        // Opcional: Podrías intentar eliminar el usuario de Auth si la escritura de Firestore falla.
     } finally {
         if (secondaryApp) {
             const secondaryAuth = getAuth(secondaryApp);
@@ -246,7 +253,7 @@ export default function TeachersPage() {
             await deleteApp(secondaryApp);
         }
     }
-};
+  };
 
   return (
     <div className="flex flex-col gap-6">
