@@ -50,12 +50,13 @@ interface Student {
 }
 
 interface EnrolledStudent {
-    id: string; // This will be the studentId
+    id: string; 
     studentId: string;
 }
 
 interface UserProfile {
   role: Role;
+  schoolId: string;
 }
 
 function CourseGrades({ course, schoolId, currentUser }: { course: Course, schoolId: string, currentUser: { uid: string, profile: UserProfile | null } }) {
@@ -179,9 +180,16 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
     const { data: userProfile, isLoading: isUserLoading } = useDoc<UserProfile>(userDocRef);
 
-    const schoolId = userProfile ? (userDocRef?.path.split('/')[1] === 'users' ? (userProfile as any)?.schoolId : userDocRef?.path.split('/')[1]) : null;
+    const schoolId = userProfile?.schoolId;
 
-    const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
+    const courseRef = useMemoFirebase(() => {
+        // Ensure schoolId and courseId are available before creating the reference
+        if (schoolId && courseId) {
+            return doc(firestore, `schools/${schoolId}/courses`, courseId);
+        }
+        return null; // Return null if dependencies are not ready
+    }, [firestore, schoolId, courseId]);
+    
     const { data: course, isLoading: isCourseLoading } = useDoc<Course>(courseRef);
 
     if (isUserLoading || isCourseLoading) {
@@ -194,8 +202,8 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         );
     }
     
-    if (!course || !user) {
-        return <p>No se pudo cargar la información del curso.</p>
+    if (!course || !user || !userProfile) {
+        return <p>No se pudo cargar la información del curso o del usuario.</p>
     }
 
     const currentUser = { uid: user.uid, profile: userProfile };
@@ -223,7 +231,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="grades">
-                    <CourseGrades course={course} schoolId={schoolId} currentUser={currentUser} />
+                    <CourseGrades course={course} schoolId={schoolId!} currentUser={currentUser} />
                 </TabsContent>
                 <TabsContent value="assignments">
                      <PlaceholderTab title="Tareas" />
