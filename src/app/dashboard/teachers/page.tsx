@@ -22,12 +22,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { toast } from '@/hooks/use-toast';
 
 interface UserData {
   id: string;
@@ -38,9 +54,16 @@ interface UserData {
   schoolId: string;
 }
 
+const teacherFormSchema = z.object({
+  firstName: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
+  lastName: z.string().min(2, { message: 'El apellido debe tener al menos 2 caracteres.' }),
+});
+
+
 export default function TeachersPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const router = useRouter();
 
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
   const { data: userData } = useDoc<{ schoolId: string, role: Role }>(userDocRef);
@@ -49,13 +72,51 @@ export default function TeachersPage() {
 
   const teachersQuery = useMemoFirebase(() => {
     if (!schoolId) return null;
-    if (userRole === 'admin') {
-      return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
-    }
     return query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'teacher'));
-  }, [schoolId, userRole, firestore]);
+  }, [schoolId, firestore]);
 
   const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
+
+  const [isModifyDialogOpen, setIsModifyDialogOpen] = React.useState(false);
+  const [selectedTeacher, setSelectedTeacher] = React.useState<UserData | null>(null);
+
+  const form = useForm<z.infer<typeof teacherFormSchema>>({
+    resolver: zodResolver(teacherFormSchema),
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+    },
+  });
+
+  React.useEffect(() => {
+    if (selectedTeacher) {
+      form.reset({
+        firstName: selectedTeacher.firstName,
+        lastName: selectedTeacher.lastName,
+      });
+    }
+  }, [selectedTeacher, form]);
+  
+  const handleModifyClick = (teacher: UserData) => {
+    setSelectedTeacher(teacher);
+    setIsModifyDialogOpen(true);
+  };
+  
+  const handleDetailsClick = (teacherId: string) => {
+    router.push(`/dashboard/teachers/${teacherId}`);
+  };
+
+  const onSubmit = (values: z.infer<typeof teacherFormSchema>) => {
+    if (!selectedTeacher) return;
+    const teacherDocRef = doc(firestore, 'users', selectedTeacher.id);
+    updateDocumentNonBlocking(teacherDocRef, values);
+    toast({
+        title: "Profesor Actualizado",
+        description: "Los datos del profesor han sido actualizados.",
+    });
+    setIsModifyDialogOpen(false);
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,8 +166,12 @@ export default function TeachersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>Asignar Asignaturas</DropdownMenuItem>
-                          <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleModifyClick(teacher)}>
+                            Modificar datos
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDetailsClick(teacher.id)}>
+                            Ver Detalles
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -123,6 +188,46 @@ export default function TeachersPage() {
           </Table>
         </CardContent>
       </Card>
+      
+      <Dialog open={isModifyDialogOpen} onOpenChange={setIsModifyDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Modificar datos del Profesor</DialogTitle>
+                <DialogDescription>
+                    Actualiza el nombre y apellido de {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
+                </DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
+                    <FormField
+                        control={form.control}
+                        name="firstName"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Nombre</FormLabel>
+                                <FormControl><Input {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                     <FormField
+                        control={form.control}
+                        name="lastName"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Apellido</FormLabel>
+                                <FormControl><Input {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <DialogFooter>
+                        <Button type="submit">Guardar Cambios</Button>
+                    </DialogFooter>
+                </form>
+            </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
