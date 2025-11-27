@@ -167,7 +167,8 @@ function PlaceholderTab({ title }: { title: string }) {
 }
 
 
-export default function CourseDetailsPage({ params: { id: courseId } }: { params: { id: string } }) {
+export default function CourseDetailsPage({ params }: { params: { id: string } }) {
+    const { id: courseId } = params;
     const firestore = useFirestore();
     const { user } = useUser();
     
