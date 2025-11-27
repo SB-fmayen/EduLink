@@ -69,17 +69,13 @@ service cloud.firestore {
       
       // Rules for role-based subcollections
       match /teachers/{teacherId} {
-        allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow create: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow write: if isAdmin(userProfile);
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create, write: if isAdmin(userProfile);
       }
 
       match /students/{studentId} {
-        allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow create: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow write: if isAdmin(userProfile);
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create, write: if isAdmin(userProfile);
       }
 
       match /grades/{gradeId} {
@@ -98,8 +94,7 @@ service cloud.firestore {
       }
 
       match /courses/{courseId} {
-        allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isMemberOfSchool(userProfile, schoolId);
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
         allow create: if isAdmin(userProfile);
         allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile));
 
@@ -145,7 +140,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // New users can create their own profile.
+      // A new user can create their own profile document.
       allow create: if isOwner(userId);
       
       let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));

@@ -209,14 +209,13 @@ export default function TeachersPage() {
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
-      // 2. The admin (using the main app's firestore instance) creates the school-specific reference
-      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
-      await setDoc(schoolTeacherRef, { id: newUser.uid });
-
-      // 3. Sign in the new user in the secondary app to gain write permission for their own user document
+      // 2. Sign in the new user in the secondary app to gain write permission
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
 
-      // 4. The new user writes their own profile document
+      // 3. Prepare data and write to Firestore as the new user
+      const batch = writeBatch(secondaryFirestore);
+
+      // 3a. Create the main user profile document
       const userPayload: UserData = {
         id: newUser.uid,
         firstName: values.firstName,
@@ -226,7 +225,13 @@ export default function TeachersPage() {
         schoolId: adminSchoolId,
       };
       const userDocRef = doc(secondaryFirestore, 'users', newUser.uid);
-      await setDoc(userDocRef, userPayload);
+      batch.set(userDocRef, userPayload);
+      
+      // 3b. Create the reference document in the school's subcollection
+      const schoolTeacherRef = doc(secondaryFirestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
+      batch.set(schoolTeacherRef, { id: newUser.uid });
+
+      await batch.commit();
       
       toast({ 
           title: 'Profesor Creado', 
@@ -243,7 +248,7 @@ export default function TeachersPage() {
         toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
-        // 5. Clean up
+        // 4. Clean up
         if (secondaryAuth.currentUser) {
             await signOut(secondaryAuth);
         }
