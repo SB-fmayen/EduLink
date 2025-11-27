@@ -44,4 +44,33 @@ Acceso para supervisar el progreso de sus hijos.
 - **Finanzas**: Ver el estado de cuenta y realizar pagos de la matrícula de su(s) hijo(s).
 - **Comunicación**: Comunicarse con los profesores de su(s) hijo(s).
 
-prueba
+## Índices de Firestore Requeridos
+
+Para que ciertas consultas complejas en la aplicación funcionen correctamente y no generen errores, es necesario crear los siguientes índices compuestos en tu base de datos de Firestore.
+
+### Cómo Crear los Índices
+
+Puedes crear estos índices usando el enlace que se genera en el mensaje de error en la consola del navegador o creándolos manualmente en la consola de Firebase.
+
+Ve a **Firestore Database > Índices > Compuesto > Crear índice**.
+
+### Índice 1: Para Consultar Usuarios por Escuela y Rol
+
+Este índice es fundamental para poder listar profesores o estudiantes que pertenecen a una escuela específica.
+
+- **ID de colección**: `users`
+- **Campos a indexar**:
+    1. `schoolId` - Ascendente
+    2. `role` - Ascendente
+- **Ámbito de la consulta**: Colección
+
+### Índice 2: Para Consultar los Cursos de un Estudiante
+
+Este índice utiliza un "grupo de colecciones" para permitir que un estudiante encuentre rápidamente todos los cursos en los que está inscrito.
+
+- **ID del grupo de colecciones**: `students`
+- **Campos a indexar**:
+    1. `studentId` - Ascendente
+- **Ámbito de la consulta**: Grupo de colecciones
+
+Una vez que crees estos índices, Firestore tardará unos minutos en construirlos. Después de eso, las consultas que antes fallaban deberían funcionar correctamente.
