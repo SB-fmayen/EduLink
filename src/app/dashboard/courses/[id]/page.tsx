@@ -27,7 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, documentId } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, documentId, collectionGroup } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClipboardList, FileText, Megaphone } from 'lucide-react';
@@ -69,25 +69,10 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
             setStudents([]);
 
             try {
-                // 1. Find all student-course links for the current course.
-                // We'll use a collectionGroup query for this, which is efficient but requires correct security rules.
-                // A rule like `match /{path=**}/studentCourses/{studentCourseId} { allow get: if ... }` is needed.
-                // Assuming such a rule exists or can be added:
-                
-                const studentCoursesQuery = query(collection(firestore, 'users'), where('role', '==', 'student'));
-                const studentDocs = await getDocs(studentCoursesQuery);
-                const studentIds: string[] = [];
-
-                for (const studentDoc of studentDocs.docs) {
-                    const studentCourseLinkQuery = query(
-                        collection(firestore, 'users', studentDoc.id, 'studentCourses'),
-                        where('courseId', '==', courseId)
-                    );
-                    const studentCourseLinkSnapshot = await getDocs(studentCourseLinkQuery);
-                    if (!studentCourseLinkSnapshot.empty) {
-                        studentIds.push(studentDoc.id);
-                    }
-                }
+                // 1. Find all student-course links for the current course using a collectionGroup query.
+                const studentCoursesQuery = query(collectionGroup(firestore, 'studentCourses'), where('courseId', '==', courseId));
+                const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
+                const studentIds = studentCoursesSnapshot.docs.map(doc => doc.data().studentId);
                 
                 if (studentIds.length > 0) {
                      // 2. Fetch the profiles for the identified students.
@@ -188,7 +173,7 @@ function PlaceholderTab({ title }: { title: string }) {
 
 
 export default function CourseDetailsPage({ params }: { params: { id: string } }) {
-    const { id: courseId } = params;
+    const { id: courseId } = React.use(params);
     const firestore = useFirestore();
     const { user } = useUser();
     
