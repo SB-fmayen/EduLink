@@ -34,7 +34,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId, writeBatch, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, writeBatch, setDoc, getFirestore } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { useRouter } from 'next/navigation';
@@ -45,8 +45,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp } from "firebase/app";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { initializeApp, deleteApp, getApp } from "firebase/app";
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 
@@ -190,14 +190,25 @@ export default function TeachersPage() {
       return;
     }
 
-    const secondaryAppName = 'secondary-auth-app';
-    const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    const secondaryAppName = 'secondary-creation-app';
+    let secondaryApp;
+    try {
+      secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    } catch (e) {
+      secondaryApp = getApp(secondaryAppName);
+    }
     const secondaryAuth = getAuth(secondaryApp);
+    const secondaryFirestore = getFirestore(secondaryApp);
 
     try {
+      // 1. Create user in Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
+      // 2. Sign in new user in secondary app
+      await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
+
+      // 3. Write data to Firestore as the new user
       const userPayload: UserData = {
         id: newUser.uid,
         firstName: values.firstName,
@@ -207,30 +218,33 @@ export default function TeachersPage() {
         schoolId: adminSchoolId,
       };
 
-      const batch = writeBatch(firestore);
-      const userDocRef = doc(firestore, 'users', newUser.uid);
+      const userDocRef = doc(secondaryFirestore, 'users', newUser.uid);
+      const schoolTeacherRef = doc(secondaryFirestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
+      
+      const batch = writeBatch(secondaryFirestore);
       batch.set(userDocRef, userPayload);
-
-      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
       batch.set(schoolTeacherRef, { id: newUser.uid });
-
       await batch.commit();
       
       toast({ 
           title: 'Profesor Creado', 
-          description: 'La cuenta ha sido creada exitosamente.' 
+          description: 'La cuenta ha sido creada y guardada en Firestore.' 
       });
       setIsNewTeacherDialogOpen(false);
       newTeacherForm.reset();
+
     } catch (error: any) {
+      console.error("Error creating teacher:", error);
       if (error.code === 'auth/email-already-in-use') {
         newTeacherForm.setError('email', { message: 'Este correo ya está en uso.' });
       } else {
-        toast({ variant: 'destructive', title: 'Error al crear profesor', description: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.' });
-        console.error(error);
+        toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
-        await signOut(secondaryAuth);
+        // 4. Clean up
+        if (secondaryAuth.currentUser) {
+            await signOut(secondaryAuth);
+        }
         await deleteApp(secondaryApp);
     }
   };

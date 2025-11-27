@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -34,7 +33,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc, getFirestore } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { toast } from '@/hooks/use-toast';
@@ -51,7 +50,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
@@ -194,14 +193,26 @@ export default function StudentsPage() {
       return;
     }
     
-    const secondaryAppName = 'secondary-auth-app';
-    const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    const secondaryAppName = 'secondary-creation-app';
+    let secondaryApp;
+    try {
+      secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    } catch (e) {
+      // App might already be initialized from a previous failed attempt
+      secondaryApp = getApp(secondaryAppName);
+    }
     const secondaryAuth = getAuth(secondaryApp);
+    const secondaryFirestore = getFirestore(secondaryApp);
 
     try {
+      // 1. Create the user in Authentication
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
+      // 2. Sign in the new user TEMPORARILY in the secondary app
+      await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
+
+      // 3. Prepare user data and write to Firestore (as the new user)
       const userPayload: UserData = {
         id: newUser.uid,
         firstName: values.firstName,
@@ -210,24 +221,29 @@ export default function StudentsPage() {
         role: 'student',
         schoolId: schoolId,
       };
-
-      const userDocRef = doc(firestore, 'users', newUser.uid);
+      
+      const userDocRef = doc(secondaryFirestore, 'users', newUser.uid);
       await setDoc(userDocRef, userPayload);
       
       toast({ 
         title: 'Estudiante Creado', 
-        description: 'La cuenta ha sido creada exitosamente.' 
+        description: 'La cuenta ha sido creada y guardada en Firestore.' 
       });
       setIsNewStudentDialogOpen(false);
       newStudentForm.reset();
+
     } catch (error: any) {
-       if (error.code === 'auth/email-already-in-use') {
+      console.error("Error creating student:", error);
+      if (error.code === 'auth/email-already-in-use') {
         newStudentForm.setError('email', { message: 'Este correo ya está en uso.' });
       } else {
-        toast({ variant: 'destructive', title: 'Error al crear estudiante', description: 'Ocurrió un error inesperado.' });
+        toast({ variant: 'destructive', title: 'Error al crear estudiante', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
-        await signOut(secondaryAuth);
+        // 4. Clean up: Sign out from the secondary app and delete it.
+        if (secondaryAuth.currentUser) {
+            await signOut(secondaryAuth);
+        }
         await deleteApp(secondaryApp);
     }
   };
