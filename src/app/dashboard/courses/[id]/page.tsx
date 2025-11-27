@@ -59,7 +59,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
     React.useEffect(() => {
         const fetchStudents = async () => {
-            if (!firestore || !courseId) {
+            if (!firestore || !course?.sectionId) {
                 setIsLoadingStudents(false);
                 return;
             };
@@ -68,35 +68,18 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
             setStudents([]);
 
             try {
-                 const studentCoursesQuery = query(
-                    collection(firestore, 'studentCourses'), 
-                    where('courseId', '==', courseId)
-                );
-                
-                const scSnapshot = await getDocs(studentCoursesQuery);
-                if (scSnapshot.empty) {
-                    setStudents([]);
-                    setIsLoadingStudents(false);
-                    return;
-                }
-
-                const studentIds = scSnapshot.docs.map(doc => doc.data().studentId);
-                
-                if (studentIds.length === 0) {
-                    setStudents([]);
-                    setIsLoadingStudents(false);
-                    return;
-                }
-                
-                const studentsQuery = query(
-                    collection(firestore, 'users'),
-                    where(documentId(), 'in', studentIds)
+                 const studentsQuery = query(
+                    collection(firestore, 'users'), 
+                    where('sectionId', '==', course.sectionId)
                 );
                 
                 const studentsSnapshot = await getDocs(studentsQuery);
-                const enrolledStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-
-                setStudents(enrolledStudents);
+                if (studentsSnapshot.empty) {
+                    setStudents([]);
+                } else {
+                    const enrolledStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+                    setStudents(enrolledStudents);
+                }
 
             } catch (error) {
                 console.error("Error fetching students for course:", error);
@@ -107,7 +90,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
         };
 
         fetchStudents();
-    }, [courseId, firestore]);
+    }, [course?.sectionId, firestore]);
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
