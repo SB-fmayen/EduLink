@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useDoc, useUser, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
 import { doc, collection, query, where } from 'firebase/firestore';
 import { Role } from '@/lib/roles';
@@ -27,6 +28,7 @@ interface StudentCourse {
 interface Course {
     id: string;
     subjectId: string;
+    subjectName?: string;
     sectionId: string;
     teacherId: string;
 }
@@ -47,13 +49,10 @@ function CourseCard({ courseId, schoolId }: CourseCardProps) {
 
   const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
   const { data: course, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
-
-  const subjectRef = useMemoFirebase(() => (schoolId && course) ? doc(firestore, `schools/${schoolId}/subjects`, course.subjectId) : null, [firestore, schoolId, course]);
-  const { data: subject, isLoading: isLoadingSubject } = useDoc<Subject>(subjectRef);
   
   const courseImage = PlaceHolderImages.find(img => img.id === 'course-placeholder');
 
-  if (isLoadingCourse || isLoadingSubject) {
+  if (isLoadingCourse) {
     return (
         <Card className="overflow-hidden">
             <Skeleton className="h-36 w-full" />
@@ -70,45 +69,47 @@ function CourseCard({ courseId, schoolId }: CourseCardProps) {
     );
   }
 
-  if (!course || !subject) return null;
+  if (!course) return null;
 
   return (
-    <Card className="overflow-hidden flex flex-col">
-      <div className="relative h-36 w-full">
-        <Image
-          src={courseImage?.imageUrl || "https://picsum.photos/seed/1/600/400"}
-          alt={subject.name}
-          fill
-          className="object-cover"
-          data-ai-hint={courseImage?.imageHint}
-        />
-        <div className="absolute top-2 right-2">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 hover:bg-white">
-                        <MoreVertical className="h-4 w-4 text-gray-700"/>
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Mover</DropdownMenuItem>
-                    <DropdownMenuItem>Editar</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-      </div>
-      <CardContent className="p-4 flex flex-col flex-grow">
-        <h3 className="font-semibold text-primary truncate" title={subject.name}>
-            {subject.name}
-        </h3>
-        <p className="text-sm text-muted-foreground">{course.id}</p>
-        <p className="text-xs text-muted-foreground flex-grow">2-Semestre-Trimestre</p>
-        <div className="flex items-center gap-4 text-muted-foreground pt-4">
-          <BarChart2 className="h-5 w-5 hover:text-primary cursor-pointer" />
-          <Bell className="h-5 w-5 hover:text-primary cursor-pointer" />
-          <MessageSquare className="h-5 w-5 hover:text-primary cursor-pointer" />
-          <FileText className="h-5 w-5 hover:text-primary cursor-pointer" />
-        </div>
-      </CardContent>
+    <Card className="overflow-hidden flex flex-col group">
+      <Link href={`/dashboard/courses/${course.id}`} className="flex flex-col flex-grow">
+          <div className="relative h-36 w-full">
+            <Image
+              src={courseImage?.imageUrl || "https://picsum.photos/seed/1/600/400"}
+              alt={course.subjectName || 'Course Image'}
+              fill
+              className="object-cover"
+              data-ai-hint={courseImage?.imageHint}
+            />
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 hover:bg-white">
+                            <MoreVertical className="h-4 w-4 text-gray-700"/>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Mover</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Editar</DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+          </div>
+          <CardContent className="p-4 flex flex-col flex-grow">
+            <h3 className="font-semibold text-primary truncate" title={course.subjectName}>
+                {course.subjectName || 'Curso sin nombre'}
+            </h3>
+            <p className="text-sm text-muted-foreground">{course.id}</p>
+            <p className="text-xs text-muted-foreground flex-grow">2-Semestre-Trimestre</p>
+            <div className="flex items-center gap-4 text-muted-foreground pt-4">
+              <BarChart2 className="h-5 w-5 hover:text-primary cursor-pointer" />
+              <Bell className="h-5 w-5 hover:text-primary cursor-pointer" />
+              <MessageSquare className="h-5 w-5 hover:text-primary cursor-pointer" />
+              <FileText className="h-5 w-5 hover:text-primary cursor-pointer" />
+            </div>
+          </CardContent>
+      </Link>
     </Card>
   );
 }

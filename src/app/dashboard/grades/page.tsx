@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -30,6 +31,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@
 import { collection, query, where, doc, getDocs } from 'firebase/firestore';
 import { Role } from '@/lib/roles';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouter } from 'next/navigation';
 
 // --- Interfaces ---
 interface UserProfile {
@@ -55,9 +57,8 @@ interface Student {
 function TeacherGradesView({ profile }: { profile: UserProfile }) {
     const firestore = useFirestore();
     const { user } = useUser();
+    const router = useRouter();
     const [selectedCourseId, setSelectedCourseId] = React.useState<string>('');
-    const [students, setStudents] = React.useState<Student[]>([]);
-    const [isLoadingStudents, setIsLoadingStudents] = React.useState(false);
 
     // 1. Obtener los cursos del profesor
     const teacherCoursesQuery = useMemoFirebase(() => {
@@ -70,57 +71,20 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
         return null;
     }, [firestore, user, profile.schoolId]);
     const { data: teacherCourses, isLoading: isLoadingCourses } = useCollection<Course>(teacherCoursesQuery);
-
-    // 2. Cuando se selecciona un curso, buscar a los estudiantes inscritos
+    
     React.useEffect(() => {
-        const fetchStudents = async () => {
-            if (!selectedCourseId || !firestore || !teacherCourses) return;
-            setIsLoadingStudents(true);
-            setStudents([]);
-            
-            const selectedCourse = teacherCourses.find(c => c.id === selectedCourseId);
-            if (!selectedCourse) {
-                 setIsLoadingStudents(false);
-                 return;
-            }
-
-            try {
-                // Encontrar a los usuarios que tienen este curso en su subcolección 'studentCourses'
-                const usersRef = collection(firestore, 'users');
-                const q = query(usersRef, where('role', '==', 'student'));
-                const allStudentsSnapshot = await getDocs(q);
-
-                const enrolledStudents: Student[] = [];
-
-                for (const studentDoc of allStudentsSnapshot.docs) {
-                    const studentCoursesRef = collection(firestore, `users/${studentDoc.id}/studentCourses`);
-                    const studentCoursesQuery = query(studentCoursesRef, where('courseId', '==', selectedCourseId));
-                    const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
-
-                    if (!studentCoursesSnapshot.empty) {
-                        enrolledStudents.push({ id: studentDoc.id, ...studentDoc.data() } as Student);
-                    }
-                }
-                
-                setStudents(enrolledStudents);
-
-            } catch (error) {
-                console.error("Error fetching students for course:", error);
-            } finally {
-                setIsLoadingStudents(false);
-            }
-        };
-
-        fetchStudents();
-    }, [selectedCourseId, firestore, teacherCourses]);
+        if(selectedCourseId) {
+            router.push(`/dashboard/courses/${selectedCourseId}`)
+        }
+    }, [selectedCourseId, router])
 
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Registro de Calificaciones</CardTitle>
+                <CardTitle>Selección de Curso</CardTitle>
                 <CardDescription>
-                    Selecciona un curso para ver los estudiantes y registrar sus notas.
+                    Selecciona un curso para gestionar las calificaciones, tareas y más. Serás redirigido a la página del curso.
                 </CardDescription>
                 <div className="pt-4">
                     <Select onValueChange={setSelectedCourseId} value={selectedCourseId} disabled={isLoadingCourses}>
@@ -138,52 +102,9 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
                 </div>
             </CardHeader>
             <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className='w-[250px]'>Estudiante</TableHead>
-                            <TableHead>Evaluación</TableHead>
-                            <TableHead>Nota</TableHead>
-                            <TableHead className='text-right'>Acciones</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {isLoadingStudents ? (
-                            <TableRow><TableCell colSpan={4} className="text-center"><Skeleton className="h-6 w-full" /></TableCell></TableRow>
-                        ) : selectedCourseId && students.length > 0 ? (
-                            students.map(student => (
-                                <TableRow key={student.id}>
-                                    <TableCell className="font-medium">{student.firstName} {student.lastName}</TableCell>
-                                    <TableCell>
-                                       <Select>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Tipo de evaluación" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="exam">Examen</SelectItem>
-                                                <SelectItem value="homework">Tarea</SelectItem>
-                                                <SelectItem value="project">Proyecto</SelectItem>
-                                                <SelectItem value="quiz">Prueba Corta</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Input type="number" placeholder="0.0" min="0" max="100" step="0.1" />
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <Button size="sm">Guardar</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={4} className="text-center h-24">
-                                    {selectedCourseId ? 'No hay estudiantes inscritos en este curso.' : 'Selecciona un curso para ver la lista de estudiantes.'}
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+                <div className="text-center text-muted-foreground h-24 flex items-center justify-center">
+                    <p>Por favor, selecciona un curso del menú superior para comenzar.</p>
+                </div>
             </CardContent>
         </Card>
     );
