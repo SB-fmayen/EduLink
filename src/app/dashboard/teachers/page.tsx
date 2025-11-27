@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -44,6 +45,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { toast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface UserData {
   id: string;
@@ -54,9 +56,15 @@ interface UserData {
   schoolId: string;
 }
 
+interface SchoolData {
+  id: string;
+  name: string;
+}
+
 const teacherFormSchema = z.object({
   firstName: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
   lastName: z.string().min(2, { message: 'El apellido debe tener al menos 2 caracteres.' }),
+  schoolId: z.string({ required_error: 'Debe seleccionar una escuela.'}).min(1, 'Debe seleccionar una escuela.'),
 });
 
 
@@ -72,10 +80,25 @@ export default function TeachersPage() {
 
   const teachersQuery = useMemoFirebase(() => {
     if (!schoolId) return null;
-    return query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'teacher'));
+    // Admins see all teachers; other roles might have different logic if needed.
+    // For now, only admins can access this page as per roles.ts.
+    return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
   }, [schoolId, firestore]);
 
   const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
+
+  const schoolsRef = useMemoFirebase(() => collection(firestore, 'schools'), [firestore]);
+  const activeSchoolsQuery = useMemoFirebase(() => query(schoolsRef, where('status', '==', 'active')), [schoolsRef]);
+  const { data: schools } = useCollection<SchoolData>(activeSchoolsQuery);
+
+  const schoolsMap = React.useMemo(() => {
+    if (!schools) return {};
+    return schools.reduce((acc, school) => {
+        acc[school.id] = school.name;
+        return acc;
+    }, {} as Record<string, string>);
+  }, [schools]);
+
 
   const [isModifyDialogOpen, setIsModifyDialogOpen] = React.useState(false);
   const [selectedTeacher, setSelectedTeacher] = React.useState<UserData | null>(null);
@@ -85,6 +108,7 @@ export default function TeachersPage() {
     defaultValues: {
       firstName: '',
       lastName: '',
+      schoolId: '',
     },
   });
 
@@ -93,6 +117,7 @@ export default function TeachersPage() {
       form.reset({
         firstName: selectedTeacher.firstName,
         lastName: selectedTeacher.lastName,
+        schoolId: selectedTeacher.schoolId,
       });
     }
   }, [selectedTeacher, form]);
@@ -134,6 +159,7 @@ export default function TeachersPage() {
               <TableRow>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Escuela Asignada</TableHead>
                 <TableHead>Rol</TableHead>
                 <TableHead>
                   <span className="sr-only">Acciones</span>
@@ -143,7 +169,7 @@ export default function TeachersPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center">
+                  <TableCell colSpan={5} className="text-center">
                     Cargando profesores...
                   </TableCell>
                 </TableRow>
@@ -154,6 +180,9 @@ export default function TeachersPage() {
                       {teacher.firstName} {teacher.lastName}
                     </TableCell>
                     <TableCell>{teacher.email}</TableCell>
+                    <TableCell>
+                      {schoolsMap[teacher.schoolId] || <span className="text-muted-foreground">No asignada</span>}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="default">{teacher.role}</Badge>
                     </TableCell>
@@ -179,7 +208,7 @@ export default function TeachersPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center">
+                  <TableCell colSpan={5} className="text-center">
                     No hay profesores registrados.
                   </TableCell>
                 </TableRow>
@@ -194,7 +223,7 @@ export default function TeachersPage() {
             <DialogHeader>
                 <DialogTitle>Modificar datos del Profesor</DialogTitle>
                 <DialogDescription>
-                    Actualiza el nombre y apellido de {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
+                    Actualiza la información y la escuela asignada para {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
                 </DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -217,6 +246,30 @@ export default function TeachersPage() {
                             <FormItem>
                                 <FormLabel>Apellido</FormLabel>
                                 <FormControl><Input {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="schoolId"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Escuela</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecciona una escuela" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {schools?.map((school) => (
+                                            <SelectItem key={school.id} value={school.id}>
+                                                {school.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <FormMessage />
                             </FormItem>
                         )}
