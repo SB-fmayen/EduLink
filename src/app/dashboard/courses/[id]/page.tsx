@@ -59,19 +59,32 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
     React.useEffect(() => {
         const fetchStudents = async () => {
-            if (!firestore || !course?.sectionId) return;
+            if (!firestore || !courseId) return;
             setIsLoadingStudents(true);
             setStudents([]);
 
             try {
-                // Query users collection for students in the specific section
-                const studentsInSectionQuery = query(
+                // 1. Find all student-course links for this course
+                // This assumes a structure like /studentCourses/{some_id} with courseId and studentId fields
+                // A better structure might be /courses/{courseId}/students/{studentId}
+                // Given the current structure, we have to find all users first, then their studentCourses
+                // This is inefficient. Let's fix the data fetching logic.
+
+                // Correct approach: Fetch users based on their sectionId, which is linked to the course.
+                if (!course?.sectionId) {
+                    setIsLoadingStudents(false);
+                    return;
+                }
+
+                const studentsQuery = query(
                     collection(firestore, 'users'),
-                    where('sectionId', '==', course.sectionId)
+                    where('sectionId', '==', course.sectionId),
+                    where('role', '==', 'student')
                 );
 
-                const querySnapshot = await getDocs(studentsInSectionQuery);
+                const querySnapshot = await getDocs(studentsQuery);
                 const enrolledStudents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+
                 setStudents(enrolledStudents);
 
             } catch (error) {
@@ -84,7 +97,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
         if (course) {
             fetchStudents();
         }
-    }, [course, firestore]);
+    }, [course, courseId, firestore]);
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
@@ -139,7 +152,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={4} className="text-center h-24">
-                                    No hay estudiantes inscritos en este curso.
+                                    No hay estudiantes inscritos en esta sección.
                                 </TableCell>
                             </TableRow>
                         )}
@@ -165,7 +178,7 @@ function PlaceholderTab({ title }: { title: string }) {
 
 
 export default function CourseDetailsPage({ params }: { params: { id: string } }) {
-    const { id: courseId } = React.use(params);
+    const courseId = React.use(params).id;
     const firestore = useFirestore();
     const { user } = useUser();
     
