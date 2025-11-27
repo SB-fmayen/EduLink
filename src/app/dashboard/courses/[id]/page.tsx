@@ -51,7 +51,7 @@ interface Student {
 function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: string }) {
     const firestore = useFirestore();
     const [students, setStudents] = React.useState<Student[]>([]);
-    const [isLoadingStudents, setIsLoadingStudents] = React.useState(false);
+    const [isLoadingStudents, setIsLoadingStudents] = React.useState(true);
     
     const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
     const { data: course, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
@@ -59,45 +59,55 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
     React.useEffect(() => {
         const fetchStudents = async () => {
-            if (!firestore || !courseId) return;
+            if (!firestore || !courseId) {
+                setIsLoadingStudents(false);
+                return;
+            };
+
             setIsLoadingStudents(true);
             setStudents([]);
 
             try {
-                // 1. Find all student-course links for this course
-                // This assumes a structure like /studentCourses/{some_id} with courseId and studentId fields
-                // A better structure might be /courses/{courseId}/students/{studentId}
-                // Given the current structure, we have to find all users first, then their studentCourses
-                // This is inefficient. Let's fix the data fetching logic.
-
-                // Correct approach: Fetch users based on their sectionId, which is linked to the course.
-                if (!course?.sectionId) {
+                 const studentCoursesQuery = query(
+                    collection(firestore, 'studentCourses'), 
+                    where('courseId', '==', courseId)
+                );
+                
+                const scSnapshot = await getDocs(studentCoursesQuery);
+                if (scSnapshot.empty) {
+                    setStudents([]);
                     setIsLoadingStudents(false);
                     return;
                 }
 
+                const studentIds = scSnapshot.docs.map(doc => doc.data().studentId);
+                
+                if (studentIds.length === 0) {
+                    setStudents([]);
+                    setIsLoadingStudents(false);
+                    return;
+                }
+                
                 const studentsQuery = query(
                     collection(firestore, 'users'),
-                    where('sectionId', '==', course.sectionId),
-                    where('role', '==', 'student')
+                    where(documentId(), 'in', studentIds)
                 );
-
-                const querySnapshot = await getDocs(studentsQuery);
-                const enrolledStudents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+                
+                const studentsSnapshot = await getDocs(studentsQuery);
+                const enrolledStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
 
                 setStudents(enrolledStudents);
 
             } catch (error) {
                 console.error("Error fetching students for course:", error);
+                setStudents([]);
             } finally {
                 setIsLoadingStudents(false);
             }
         };
 
-        if (course) {
-            fetchStudents();
-        }
-    }, [course, courseId, firestore]);
+        fetchStudents();
+    }, [courseId, firestore]);
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
