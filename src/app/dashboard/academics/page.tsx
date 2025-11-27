@@ -535,14 +535,14 @@ function SectionsManager() {
 
     const teachersQuery = useMemoFirebase(() => {
         if (!firestore || !schoolId) return null;
-        // This query now requires a composite index.
+        // This query now requires a composite index. The user will be prompted to create it.
         return query(
             collection(firestore, 'users'), 
             where('schoolId', '==', schoolId), 
             where('role', '==', 'teacher')
         );
     }, [firestore, schoolId]);
-    const { data: teachers } = useCollection<UserData>(teachersQuery);
+    const { data: teachers, error: teachersError } = useCollection<UserData>(teachersQuery);
 
     const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
     const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
@@ -830,7 +830,7 @@ function SectionsManager() {
                                         <FormItem>
                                             <FormLabel>Profesor</FormLabel>
                                             <Select onValueChange={field.onChange} value={field.value}>
-                                                <FormControl><SelectTrigger><SelectValue placeholder="Selecciona profesor" /></SelectTrigger></FormControl>
+                                                <FormControl><SelectTrigger><SelectValue placeholder={teachersError ? 'Error al cargar' : 'Selecciona profesor'} /></SelectTrigger></FormControl>
                                                 <SelectContent>
                                                     {teachers?.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</SelectItem>)}
                                                 </SelectContent>
