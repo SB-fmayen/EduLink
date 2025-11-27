@@ -30,7 +30,8 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@
 import { collection, query, where, doc, getDocs, documentId } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, FileText, Megaphone } from 'lucide-react';
+import { ClipboardList, FileText, Megaphone, ShieldAlert } from 'lucide-react';
+import { Role } from '@/lib/roles';
 
 
 interface Course {
@@ -50,32 +51,37 @@ interface Student {
 
 interface EnrolledStudent {
     id: string; // This will be the studentId
+    studentId: string;
 }
 
-function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: string }) {
+interface UserProfile {
+  role: Role;
+}
+
+function CourseGrades({ course, schoolId, currentUser }: { course: Course, schoolId: string, currentUser: { uid: string, profile: UserProfile | null } }) {
     const firestore = useFirestore();
-    
-    const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
-    const { data: course, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
-    
+
+    const canViewStudents = currentUser.profile?.role === 'admin' || currentUser.uid === course.teacherId;
+
     // 1. Get the list of enrolled student IDs from the subcollection
-    const enrolledStudentsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses/${courseId}/students`) : null, [firestore, schoolId, courseId]);
+    const enrolledStudentsRef = useMemoFirebase(() => {
+        if (canViewStudents && schoolId && course.id) {
+            return collection(firestore, `schools/${schoolId}/courses/${course.id}/students`);
+        }
+        return null;
+    }, [firestore, schoolId, course.id, canViewStudents]);
     const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<EnrolledStudent>(enrolledStudentsRef);
 
     // 2. Fetch the profiles of the enrolled students
     const studentProfilesQuery = useMemoFirebase(() => {
-        if (!enrolledStudents || enrolledStudents.length === 0) return null;
+        if (!canViewStudents || !enrolledStudents || enrolledStudents.length === 0) return null;
         const studentIds = enrolledStudents.map(s => s.id);
         return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
-    }, [firestore, enrolledStudents]);
+    }, [firestore, enrolledStudents, canViewStudents]);
     const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
 
-    const isLoading = isLoadingCourse || isLoadingEnrolled || isLoadingProfiles;
+    const isLoading = canViewStudents && (isLoadingEnrolled || isLoadingProfiles);
     
-    if (isLoadingCourse) {
-         return <Skeleton className="h-60 w-full" />
-    }
-
     return (
         <Card>
             <CardHeader>
@@ -85,6 +91,13 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                 </CardDescription>
             </CardHeader>
             <CardContent>
+                {!canViewStudents ? (
+                     <div className="flex flex-col items-center justify-center h-48 text-center bg-secondary/50 rounded-md">
+                        <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
+                        <h3 className="font-semibold">Acceso Restringido</h3>
+                        <p className="text-sm text-muted-foreground">No tienes permisos para ver la lista de estudiantes.</p>
+                    </div>
+                ) : (
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -138,6 +151,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                         )}
                     </TableBody>
                 </Table>
+                )}
             </CardContent>
         </Card>
     )
@@ -163,9 +177,11 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     const { user } = useUser();
     
     const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-    const { data: userData, isLoading: isUserLoading } = useDoc<{ schoolId: string }>(userDocRef);
+    const { data: userProfile, isLoading: isUserLoading } = useDoc<UserProfile>(userDocRef);
 
-    const courseRef = useMemoFirebase(() => userData?.schoolId ? doc(firestore, `schools/${userData.schoolId}/courses`, courseId) : null, [firestore, userData, courseId]);
+    const schoolId = userProfile ? (userDocRef?.path.split('/')[1] === 'users' ? (userProfile as any)?.schoolId : userDocRef?.path.split('/')[1]) : null;
+
+    const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
     const { data: course, isLoading: isCourseLoading } = useDoc<Course>(courseRef);
 
     if (isUserLoading || isCourseLoading) {
@@ -178,9 +194,11 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         );
     }
     
-    if (!course || !userData) {
+    if (!course || !user) {
         return <p>No se pudo cargar la información del curso.</p>
     }
+
+    const currentUser = { uid: user.uid, profile: userProfile };
 
     return (
         <div className="flex flex-col gap-6">
@@ -205,7 +223,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="grades">
-                    <CourseGrades courseId={courseId} schoolId={userData.schoolId} />
+                    <CourseGrades course={course} schoolId={schoolId} currentUser={currentUser} />
                 </TabsContent>
                 <TabsContent value="assignments">
                      <PlaceholderTab title="Tareas" />
