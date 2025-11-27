@@ -70,12 +70,13 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
             try {
                 // 1. Find all student-course links for the current course using a collectionGroup query.
+                // This is more efficient if studentCourses are nested under users.
                 const studentCoursesQuery = query(collectionGroup(firestore, 'studentCourses'), where('courseId', '==', courseId));
                 const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
                 const studentIds = studentCoursesSnapshot.docs.map(doc => doc.data().studentId);
                 
                 if (studentIds.length > 0) {
-                     // 2. Fetch the profiles for the identified students.
+                     // 2. Fetch the profiles for the identified students. We can fetch up to 30 documents with a single 'in' query.
                     const studentsQuery = query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
                     const studentsSnapshot = await getDocs(studentsQuery);
                     const enrolledStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
