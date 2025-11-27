@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -33,7 +34,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { toast } from '@/hooks/use-toast';
@@ -51,7 +52,7 @@ import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp, getApp, FirebaseOptions } from 'firebase/app';
+import { initializeApp, deleteApp, FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { firebaseConfig } from '@/firebase/config';
@@ -155,32 +156,33 @@ export default function StudentsPage() {
 
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
     let secondaryApp;
+    let newStudentId = '';
 
     try {
-      secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
-      const secondaryAuth = getAuth(secondaryApp);
-      const secondaryFirestore = getFirestore(secondaryApp);
+        secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
+        const secondaryAuth = getAuth(secondaryApp);
+        const secondaryFirestore = getFirestore(secondaryApp);
 
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-      
-      const newStudentId = userCredential.user.uid;
-      
-      // Admin writes the reference document
-      const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
-      await setDoc(schoolStudentRef, { id: newStudentId });
-
-      await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
-      
-      const userPayload: Omit<UserData, 'id'> = {
-        firstName: values.firstName,
-        lastName: values.lastName,
-        email: values.email,
-        role: 'student',
-        schoolId: schoolId,
-      };
-      
-      const userDocRef = doc(secondaryFirestore, 'users', newStudentId);
-      await setDoc(userDocRef, userPayload);
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
+        newStudentId = userCredential.user.uid;
+        
+        // Admin creates the reference doc
+        const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
+        await setDoc(schoolStudentRef, { id: newStudentId });
+        
+        // New user signs in and creates their own profile
+        await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
+        
+        const userPayload: Omit<UserData, 'id'> = {
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            role: 'student',
+            schoolId: schoolId,
+        };
+        
+        const userDocRef = doc(secondaryFirestore, 'users', newStudentId);
+        await setDoc(userDocRef, userPayload);
       
       toast({ 
         title: 'Estudiante Creado', 
@@ -190,10 +192,15 @@ export default function StudentsPage() {
       newStudentForm.reset();
 
     } catch (error: any) {
+      console.error("Error creating student:", error);
+      if (newStudentId) {
+          const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
+          await deleteDoc(schoolStudentRef).catch(e => console.error("Cleanup failed:", e));
+      }
+
       if (error.code === 'auth/email-already-in-use') {
         newStudentForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
       } else {
-        console.error("Error creating student:", error);
         toast({ variant: 'destructive', title: 'Error al crear estudiante', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
@@ -225,14 +232,11 @@ export default function StudentsPage() {
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
     const batch = writeBatch(firestore);
 
-    // Update user's section and grade
     batch.update(studentDocRef, { sectionId: sectionData.id, gradeId: sectionData.gradeId });
     
-    // Add student reference to the school's students subcollection
     const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, selectedStudent.id);
     batch.set(schoolStudentRef, { id: selectedStudent.id }, { merge: true });
     
-    // Remove from old courses if section is changed
     if (oldSectionId && oldSectionId !== selectedSection) {
         const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
         for (const course of oldCourses) {
@@ -241,7 +245,6 @@ export default function StudentsPage() {
         }
     }
 
-    // Add to new courses
     for (const course of coursesInSection) {
         const enrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
         batch.set(enrollmentRef, { studentId: selectedStudent.id });
