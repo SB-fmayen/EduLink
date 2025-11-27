@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -32,8 +33,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useAuth } from '@/firebase';
-import { collection, query, where, doc, documentId, writeBatch } from 'firebase/firestore';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { collection, query, where, doc, documentId, writeBatch, setDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { useRouter } from 'next/navigation';
@@ -44,7 +45,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, getAuth, signOut } from 'firebase/auth';
+import { initializeApp, deleteApp } from "firebase/app";
+import { firebaseConfig } from '@/firebase/config';
 
 interface UserData {
   id: string;
@@ -75,7 +78,6 @@ const newTeacherFormSchema = z.object({
 
 export default function TeachersPage() {
   const firestore = useFirestore();
-  const auth = useAuth();
   const { user } = useUser();
   const router = useRouter();
 
@@ -182,14 +184,17 @@ export default function TeachersPage() {
   };
 
   const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
-    if (!auth || !adminSchoolId) {
+    if (!adminSchoolId) {
       toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información del administrador.' });
       return;
     }
 
+    const secondaryAppName = 'secondary-auth-app';
+    const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    const secondaryAuth = getAuth(secondaryApp);
+
     try {
-      // Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
       const userPayload: UserData = {
@@ -201,7 +206,6 @@ export default function TeachersPage() {
         schoolId: adminSchoolId,
       };
 
-      // Create user profile and school reference in Firestore
       const batch = writeBatch(firestore);
       const userDocRef = doc(firestore, 'users', newUser.uid);
       batch.set(userDocRef, userPayload);
@@ -210,8 +214,14 @@ export default function TeachersPage() {
       batch.set(schoolTeacherRef, { id: newUser.uid });
 
       await batch.commit();
-
-      toast({ title: 'Profesor Creado', description: 'La cuenta del nuevo profesor ha sido creada con éxito.' });
+      
+      const mainAuth = getAuth();
+      await sendPasswordResetEmail(mainAuth, values.email);
+      
+      toast({ 
+          title: 'Profesor Creado', 
+          description: 'La cuenta ha sido creada y se ha enviado un correo de bienvenida.' 
+      });
       setIsNewTeacherDialogOpen(false);
       newTeacherForm.reset();
     } catch (error: any) {
@@ -221,9 +231,11 @@ export default function TeachersPage() {
         toast({ variant: 'destructive', title: 'Error al crear profesor', description: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.' });
         console.error(error);
       }
+    } finally {
+        await signOut(secondaryAuth);
+        await deleteApp(secondaryApp);
     }
   };
-
 
   return (
     <div className="flex flex-col gap-6">

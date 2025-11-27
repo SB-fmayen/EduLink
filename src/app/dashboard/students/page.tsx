@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -32,7 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useAuth } from '@/firebase';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
@@ -50,7 +51,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { firebaseConfig } from '@/firebase/config';
 
 interface UserData {
   id: string;
@@ -88,7 +92,6 @@ const newStudentFormSchema = z.object({
 
 export default function StudentsPage() {
   const firestore = useFirestore();
-  const auth = useAuth();
   const { user } = useUser();
 
   const userDocRef = useMemoFirebase(() => (user ? doc(firestore, `users/${user.uid}`) : null), [user, firestore]);
@@ -179,7 +182,6 @@ export default function StudentsPage() {
   
   const isLoading = isProfilesLoading || isLoadingTeacherStudents;
 
-
   const handleAssignClick = (student: UserData) => {
     setSelectedStudent(student);
     setSelectedSection(student.sectionId || '');
@@ -187,10 +189,17 @@ export default function StudentsPage() {
   };
 
   const onNewStudentSubmit = async (values: z.infer<typeof newStudentFormSchema>) => {
-    if (!auth || !schoolId) return;
+    if (!schoolId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se ha podido identificar la escuela del administrador.' });
+      return;
+    }
+    
+    const secondaryAppName = 'secondary-auth-app';
+    const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+    const secondaryAuth = getAuth(secondaryApp);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
       const userPayload: UserData = {
@@ -204,8 +213,14 @@ export default function StudentsPage() {
 
       const userDocRef = doc(firestore, 'users', newUser.uid);
       await setDoc(userDocRef, userPayload);
+      
+      const mainAuth = getAuth();
+      await sendPasswordResetEmail(mainAuth, values.email);
 
-      toast({ title: 'Estudiante Creado', description: 'La cuenta del nuevo estudiante ha sido creada.' });
+      toast({ 
+        title: 'Estudiante Creado', 
+        description: 'La cuenta ha sido creada y se ha enviado un correo de bienvenida.' 
+      });
       setIsNewStudentDialogOpen(false);
       newStudentForm.reset();
     } catch (error: any) {
@@ -214,6 +229,9 @@ export default function StudentsPage() {
       } else {
         toast({ variant: 'destructive', title: 'Error al crear estudiante', description: 'Ocurrió un error inesperado.' });
       }
+    } finally {
+        await signOut(secondaryAuth);
+        await deleteApp(secondaryApp);
     }
   };
   
