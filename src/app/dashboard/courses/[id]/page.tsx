@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -169,11 +170,12 @@ function PlaceholderTab({ title }: { title: string }) {
 export default function CourseDetailsPage({ params }: { params: { id: string } }) {
     const firestore = useFirestore();
     const { user } = useUser();
+    const { id: courseId } = params;
     
     const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
     const { data: userData, isLoading: isUserLoading } = useDoc<{ schoolId: string }>(userDocRef);
 
-    const courseRef = useMemoFirebase(() => userData?.schoolId ? doc(firestore, `schools/${userData.schoolId}/courses`, params.id) : null, [firestore, userData, params.id]);
+    const courseRef = useMemoFirebase(() => userData?.schoolId ? doc(firestore, `schools/${userData.schoolId}/courses`, courseId) : null, [firestore, userData, courseId]);
     const { data: course, isLoading: isCourseLoading } = useDoc<Course>(courseRef);
 
     if (isUserLoading || isCourseLoading) {
@@ -213,7 +215,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="grades">
-                    <CourseGrades courseId={params.id} schoolId={userData.schoolId} />
+                    <CourseGrades courseId={courseId} schoolId={userData.schoolId} />
                 </TabsContent>
                 <TabsContent value="assignments">
                      <PlaceholderTab title="Tareas" />
