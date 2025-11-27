@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { collection, doc, serverTimestamp, query, where } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -75,6 +75,22 @@ import {
 } from '@/components/ui/select';
 import { Role } from '@/lib/roles';
 import { MoreHorizontal, PlusCircle } from 'lucide-react';
+
+
+interface CourseData {
+    id: string;
+    subjectId: string;
+    sectionId: string;
+    teacherId: string;
+    schedule: string;
+}
+
+interface UserData {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role: Role;
+}
 
 
 // Componente para la gestión de Cursos (Asignaturas)
@@ -103,6 +119,10 @@ function CoursesManager() {
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [editingSubject, setEditingSubject] = React.useState<SubjectData | null>(null);
+  
+  const [isAlertOpen, setIsAlertOpen] = React.useState(false);
+  const [alertContent, setAlertContent] = React.useState({ title: '', description: ''});
+  const [subjectToDelete, setSubjectToDelete] = React.useState<SubjectData | null>(null);
 
   const form = useForm<z.infer<typeof subjectFormSchema>>({
     resolver: zodResolver(subjectFormSchema),
@@ -123,14 +143,32 @@ function CoursesManager() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (subjectId: string) => {
+  const handleDeleteAttempt = async (subject: SubjectData) => {
     if (!schoolId) return;
-    const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', subjectId);
+    const coursesRef = collection(firestore, 'schools', schoolId, 'courses');
+    const q = query(coursesRef, where('subjectId', '==', subject.id));
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+      setAlertContent({
+        title: 'No se puede eliminar la asignatura',
+        description: `Esta asignatura está asignada a ${snapshot.size} curso(s) y no puede ser eliminada.`,
+      });
+      setIsAlertOpen(true);
+    } else {
+      setSubjectToDelete(subject);
+    }
+  };
+
+  const executeDelete = () => {
+    if (!subjectToDelete || !schoolId) return;
+    const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', subjectToDelete.id);
     deleteDocumentNonBlocking(subjectDocRef);
     toast({
         title: "Asignatura Eliminada",
         description: "La asignatura ha sido eliminada correctamente."
     });
+    setSubjectToDelete(null);
   };
 
   const onSubmit = (values: z.infer<typeof subjectFormSchema>) => {
@@ -187,19 +225,7 @@ function CoursesManager() {
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleEditClick(subject)}>Editar</DropdownMenuItem>
-                            <AlertDialog>
-                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la asignatura.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(subject.id)}>Continuar</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                            </AlertDialog>
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteAttempt(subject); }}>Eliminar</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -237,6 +263,29 @@ function CoursesManager() {
             </Form>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={subjectToDelete !== null} onOpenChange={(open) => !open && setSubjectToDelete(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás realmente seguro?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la asignatura.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>{alertContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>{alertContent.description}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setIsAlertOpen(false)}>Entendido</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
@@ -269,6 +318,10 @@ function GradesManager() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [editingGrade, setEditingGrade] = React.useState<GradeData | null>(null);
 
+  const [isAlertOpen, setIsAlertOpen] = React.useState(false);
+  const [alertContent, setAlertContent] = React.useState({ title: '', description: ''});
+  const [gradeToDelete, setGradeToDelete] = React.useState<GradeData | null>(null);
+
   const form = useForm<z.infer<typeof gradeFormSchema>>({
     resolver: zodResolver(gradeFormSchema),
     defaultValues: { name: '' },
@@ -288,14 +341,32 @@ function GradesManager() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (gradeId: string) => {
+  const handleDeleteAttempt = async (grade: GradeData) => {
     if (!schoolId) return;
-    const gradeDocRef = doc(firestore, 'schools', schoolId, 'grades', gradeId);
+    const sectionsRef = collection(firestore, 'schools', schoolId, 'sections');
+    const q = query(sectionsRef, where('gradeId', '==', grade.id));
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+        setAlertContent({
+            title: 'No se puede eliminar el grado',
+            description: `Este grado tiene ${snapshot.size} sección(es) asociadas y no puede ser eliminado.`,
+        });
+        setIsAlertOpen(true);
+    } else {
+        setGradeToDelete(grade);
+    }
+  };
+
+  const executeDelete = () => {
+    if (!gradeToDelete || !schoolId) return;
+    const gradeDocRef = doc(firestore, 'schools', schoolId, 'grades', gradeToDelete.id);
     deleteDocumentNonBlocking(gradeDocRef);
     toast({
         title: "Grado Eliminado",
         description: "El grado ha sido eliminado correctamente."
     });
+    setGradeToDelete(null);
   };
 
   const onSubmit = (values: z.infer<typeof gradeFormSchema>) => {
@@ -352,19 +423,7 @@ function GradesManager() {
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleEditClick(grade)}>Editar</DropdownMenuItem>
-                            <AlertDialog>
-                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente el grado.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(grade.id)}>Continuar</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                            </AlertDialog>
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteAttempt(grade); }}>Eliminar</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -402,6 +461,29 @@ function GradesManager() {
             </Form>
         </DialogContent>
       </Dialog>
+       <AlertDialog open={gradeToDelete !== null} onOpenChange={(open) => !open && setGradeToDelete(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente el grado.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>{alertContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>{alertContent.description}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setIsAlertOpen(false)}>Entendido</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
@@ -414,21 +496,6 @@ interface SectionData {
   createdAt?: {
     toDate: () => Date;
   };
-}
-
-interface CourseData {
-    id: string;
-    subjectId: string;
-    sectionId: string;
-    teacherId: string;
-    schedule: string;
-}
-
-interface UserData {
-    id: string;
-    firstName: string;
-    lastName: string;
-    role: Role;
 }
 
 const sectionFormSchema = z.object({
@@ -455,13 +522,13 @@ function SectionsManager() {
     const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
     
     const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
-    const { data: grades, isLoading: isLoadingGrades } = useCollection<GradeData>(gradesRef);
+    const { data: grades } = useCollection<GradeData>(gradesRef);
 
     const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
-    const { data: subjects, isLoading: isLoadingSubjects } = useCollection<SubjectData>(subjectsRef);
+    const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
     const teachersQuery = useMemoFirebase(() => schoolId ? query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'teacher')) : null, [schoolId, firestore]);
-    const { data: teachers, isLoading: isLoadingTeachers } = useCollection<UserData>(teachersQuery);
+    const { data: teachers } = useCollection<UserData>(teachersQuery);
 
     const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
     const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
@@ -472,6 +539,11 @@ function SectionsManager() {
     const [isCourseDialogOpen, setIsCourseDialogOpen] = React.useState(false);
     const [managingCoursesForSection, setManagingCoursesForSection] = React.useState<SectionData | null>(null);
     const [editingCourse, setEditingCourse] = React.useState<CourseData | null>(null);
+    
+    const [isAlertOpen, setIsAlertOpen] = React.useState(false);
+    const [alertContent, setAlertContent] = React.useState({ title: '', description: '' });
+    const [sectionToDelete, setSectionToDelete] = React.useState<SectionData | null>(null);
+    const [courseToDeleteId, setCourseToDeleteId] = React.useState<string | null>(null);
     
     // Forms
     const sectionForm = useForm<z.infer<typeof sectionFormSchema>>({
@@ -513,11 +585,28 @@ function SectionsManager() {
         setIsSectionDialogOpen(true);
     };
 
-    const handleDeleteSection = (sectionId: string) => {
+    const handleDeleteSectionAttempt = async (section: SectionData) => {
         if (!schoolId) return;
-        const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', sectionId);
+        const coursesQuery = query(coursesRef!, where('sectionId', '==', section.id));
+        const snapshot = await getDocs(coursesQuery);
+        
+        if (!snapshot.empty) {
+            setAlertContent({
+                title: 'No se puede eliminar la sección',
+                description: `Esta sección tiene ${snapshot.size} curso(s) asignado(s) y no puede ser eliminada.`,
+            });
+            setIsAlertOpen(true);
+        } else {
+            setSectionToDelete(section);
+        }
+    };
+    
+    const executeDeleteSection = () => {
+        if (!sectionToDelete || !schoolId) return;
+        const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', sectionToDelete.id);
         deleteDocumentNonBlocking(sectionDocRef);
         toast({ title: "Sección Eliminada", description: "La sección ha sido eliminada correctamente." });
+        setSectionToDelete(null);
     };
 
     const onSectionSubmit = (values: z.infer<typeof sectionFormSchema>) => {
@@ -545,7 +634,10 @@ function SectionsManager() {
         
         if (editingCourse) {
             const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', editingCourse.id);
-            updateDocumentNonBlocking(courseDocRef, values);
+            updateDocumentNonBlocking(courseDocRef, {
+                ...editingCourse,
+                ...values,
+            });
             toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
 
         } else {
@@ -561,11 +653,12 @@ function SectionsManager() {
         setEditingCourse(null);
     };
     
-    const handleDeleteCourse = (courseId: string) => {
-        if (!schoolId) return;
-        const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', courseId);
+    const executeDeleteCourse = () => {
+        if (!courseToDeleteId || !schoolId) return;
+        const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', courseToDeleteId);
         deleteDocumentNonBlocking(courseDocRef);
         toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección." });
+        setCourseToDeleteId(null);
     }
 
     const handleEditCourseClick = (course: CourseData) => {
@@ -627,19 +720,7 @@ function SectionsManager() {
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem onClick={() => handleEditSectionClick(section)}>Editar</DropdownMenuItem>
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                                                <AlertDialogDescription>Esta acción eliminará permanentemente la sección.</AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleDeleteSection(section.id)}>Continuar</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
+                                                    <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteSectionAttempt(section); }}>Eliminar</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
@@ -765,19 +846,7 @@ function SectionsManager() {
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
                                                             <DropdownMenuItem onClick={() => handleEditCourseClick(course)}>Editar</DropdownMenuItem>
-                                                            <AlertDialog>
-                                                                <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()}>Eliminar</DropdownMenuItem></AlertDialogTrigger>
-                                                                <AlertDialogContent>
-                                                                    <AlertDialogHeader>
-                                                                        <AlertDialogTitle>¿Seguro?</AlertDialogTitle>
-                                                                        <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
-                                                                    </AlertDialogHeader>
-                                                                    <AlertDialogFooter>
-                                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                        <AlertDialogAction onClick={() => handleDeleteCourse(course.id)}>Eliminar</AlertDialogAction>
-                                                                    </AlertDialogFooter>
-                                                                </AlertDialogContent>
-                                                            </AlertDialog>
+                                                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setCourseToDeleteId(course.id); }}>Eliminar</DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </TableCell>
@@ -792,6 +861,45 @@ function SectionsManager() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Confirmation Dialogs */}
+            <AlertDialog open={sectionToDelete !== null} onOpenChange={(open) => !open && setSectionToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la sección.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={executeDeleteSection}>Continuar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={courseToDeleteId !== null} onOpenChange={(open) => !open && setCourseToDeleteId(null)}>
+                 <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>Esta acción eliminará la asignación del curso a esta sección. No se puede deshacer.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={executeDeleteCourse}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>{alertContent.title}</AlertDialogTitle>
+                    <AlertDialogDescription>{alertContent.description}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogAction onClick={() => setIsAlertOpen(false)}>Entendido</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 }
@@ -828,7 +936,3 @@ export default function AcademicsPage() {
     </div>
   );
 }
-
-    
-
-    
