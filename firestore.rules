@@ -52,11 +52,18 @@ service cloud.firestore {
     
     // --- Collection Group Rules ---
     match /{path=**}/students/{studentId} {
-      // Allow a student to read their own enrollment records via a collection group query
-      // This is essential for the student dashboard to find courses.
-      // This requires a composite index on (students collection group, studentId ASC)
-      allow get: if isOwner(resource.data.studentId);
-      allow list: if request.query.where.studentId == request.auth.uid;
+      function getCourseIdFromPath(pathToStudent) {
+        return pathToStudent[3]; // e.g., /schools/{schoolId}/courses/{courseId}/students/{studentId} -> courses is at index 2, courseId is at index 3
+      }
+      function getSchoolIdFromPath(pathToStudent) {
+        return pathToStudent[1];
+      }
+      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      // Allow a student to read their own enrollment.
+      // Allow a teacher to read the enrollment of a student in their course.
+      // Allow an admin to read any enrollment.
+      allow get: if isOwner(resource.data.studentId) || isAdmin(userProfile) || isTeacherOfCourse(getSchoolIdFromPath(path), getCourseIdFromPath(path));
+      allow list: if request.query.where.studentId == request.auth.uid || isAdmin(userProfile);
     }
 
     match /schools/{schoolId} {
@@ -68,15 +75,15 @@ service cloud.firestore {
       
       // Rules for role-based subcollections
       match /teachers/{teacherId} {
-        allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow write: if isAdmin(userProfile); 
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
+        allow delete: if isAdmin(userProfile); 
       }
 
       match /students/{studentId} {
-        allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow write: if isAdmin(userProfile);
+        allow get, list: if isMemberOfSchool(userProfile, schoolId);
+        allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
+        allow delete: if isAdmin(userProfile);
       }
 
       match /grades/{gradeId} {
@@ -101,7 +108,7 @@ service cloud.firestore {
 
         match /students/{studentId} {
            allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile) || isOwner(studentId);
-           allow create, update, delete: if isAdmin(userProfile) || isTeacherOfCourse(schoolId, courseId);
+           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
         }
       }
 
@@ -141,15 +148,15 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // A user can only create their own profile document.
-      allow create: if request.auth.uid == userId;
+      // A new user can only create their own profile document.
+      allow create: if isOwner(userId) || isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)));
       
       let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
 
       // Users can read their own profile. Admins can read any profile.
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
-      // Admins can list all users of a certain role within their school
+      // Only admins can list all users. Teachers query students through course subcollections.
       allow list: if isAdmin(userProfile);
 
       // Users can update their own profile, admins can update any.
