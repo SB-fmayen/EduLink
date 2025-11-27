@@ -52,7 +52,7 @@ import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp, getApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApp, FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 
@@ -194,13 +194,8 @@ export default function StudentsPage() {
       return;
     }
     
-    const secondaryAppName = 'secondary-creation-app';
-    let secondaryApp;
-    try {
-      secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-    } catch (e) {
-      secondaryApp = getApp(secondaryAppName);
-    }
+    const secondaryAppName = `secondary-creation-app-${Date.now()}`;
+    const secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
     const secondaryFirestore = getFirestore(secondaryApp);
 
@@ -407,4 +402,3 @@ export default function StudentsPage() {
     </div>
   );
 }
-

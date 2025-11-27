@@ -70,7 +70,8 @@ service cloud.firestore {
       // Rules for role-based subcollections
       match /teachers/{teacherId} {
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create, write: if isAdmin(userProfile);
+        allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
+        allow write: if isAdmin(userProfile); 
       }
 
       match /students/{studentId} {
@@ -149,7 +150,7 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
       // Admins can list all users of a certain role within their school
-      allow list: if isAdmin(userProfile) && request.query.where.schoolId == userProfile.data.schoolId;
+      allow list: if isAdmin(userProfile);
 
       // Users can update their own profile, admins can update any.
       allow update: if isOwner(userId) || isAdmin(userProfile);

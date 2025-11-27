@@ -46,7 +46,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp, getApp } from "firebase/app";
+import { initializeApp, deleteApp, getApp, FirebaseOptions } from "firebase/app";
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 
@@ -91,7 +91,8 @@ export default function TeachersPage() {
     if (userRole === 'admin' && adminSchoolId) {
       return query(collection(firestore, 'users'), where('schoolId', '==', adminSchoolId), where('role', '==', 'teacher'));
     }
-    if (userRole === 'admin') {
+    // Allow super admin to see all teachers if not scoped to a school
+    if (userRole === 'admin' && !adminSchoolId) { 
       return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }
     return null;
@@ -193,13 +194,8 @@ export default function TeachersPage() {
       return;
     }
 
-    const secondaryAppName = 'secondary-creation-app';
-    let secondaryApp;
-    try {
-      secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-    } catch (e) {
-      secondaryApp = getApp(secondaryAppName);
-    }
+    const secondaryAppName = `secondary-creation-app-${Date.now()}`;
+    const secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
     const secondaryFirestore = getFirestore(secondaryApp);
 
@@ -425,4 +421,3 @@ export default function TeachersPage() {
     </div>
   );
 }
-
