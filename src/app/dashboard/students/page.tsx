@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
@@ -59,109 +59,195 @@ interface UserData {
 }
 
 interface SectionData {
-    id: string;
-    name: string;
-    gradeId: string;
+  id: string;
+  name: string;
+  gradeId: string;
 }
 
 interface GradeData {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
 }
 
 interface CourseData {
-    id: string;
-    sectionId: string;
+  id: string;
+  sectionId: string;
 }
 
 export default function StudentsPage() {
-    const firestore = useFirestore();
-    const { user } = useUser();
+  const firestore = useFirestore();
+  const { user } = useUser();
 
-    const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-    const { data: userData } = useDoc<{ schoolId: string, role: Role }>(userDocRef);
-    const schoolId = userData?.schoolId;
-    const userRole = userData?.role;
+  const userDocRef = useMemoFirebase(
+    () => (user ? doc(firestore, `users/${user.uid}`) : null),
+    [user, firestore]
+  );
+  const { data: userData } = useDoc<{ schoolId: string; role: Role }>(userDocRef);
+  const schoolId = userData?.schoolId;
+  const userRole = userData?.role;
+  
+  const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('');
 
-    const studentsQuery = useMemoFirebase(() => {
-        if (!schoolId) return null;
-        if (userRole === 'admin') {
-             return query(collection(firestore, 'users'), where('role', '==', 'student'));
-        }
-        return query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'student'));
-    }, [schoolId, userRole, firestore]);
+  const studentsQuery = useMemoFirebase(() => {
+    if (!schoolId) return null;
+
+    if (userRole === 'admin') {
+      return query(
+        collection(firestore, 'users'),
+        where('role', '==', 'student')
+      );
+    }
     
-    const { data: students, isLoading } = useCollection<UserData>(studentsQuery);
+    if (userRole === 'teacher' && selectedSectionFilter) {
+         return query(
+            collection(firestore, 'users'), 
+            where('schoolId', '==', schoolId), 
+            where('role', '==', 'student'), 
+            where('sectionId', '==', selectedSectionFilter)
+        );
+    }
 
-    const sectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
-    const { data: sections } = useCollection<SectionData>(sectionsRef);
-    
-    const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
-    const { data: grades } = useCollection<GradeData>(gradesRef);
-    
-    const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
-    const { data: courses } = useCollection<CourseData>(coursesRef);
-    
-    const [isAssignDialogOpen, setIsAssignDialogOpen] = React.useState(false);
-    const [selectedStudent, setSelectedStudent] = React.useState<UserData | null>(null);
-    const [selectedSection, setSelectedSection] = React.useState<string>('');
+    return null; // For teachers, wait for section selection
+  }, [schoolId, userRole, firestore, selectedSectionFilter]);
 
-    const gradesMap = React.useMemo(() => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {}, [grades]);
-    const sectionsMap = React.useMemo(() => sections?.reduce((acc, section) => ({ ...acc, [section.id]: section }), {} as Record<string, SectionData>) || {}, [sections]);
+  const { data: students, isLoading } = useCollection<UserData>(studentsQuery);
+  
+  const teacherCoursesQuery = useMemoFirebase(() => {
+      if (userRole === 'teacher' && user) {
+          return query(collection(firestore, 'schools', schoolId!, 'courses'), where('teacherId', '==', user.uid));
+      }
+      return null;
+  }, [schoolId, userRole, user, firestore]);
 
-    const handleAssignClick = (student: UserData) => {
-        setSelectedStudent(student);
-        setSelectedSection(student.sectionId || '');
-        setIsAssignDialogOpen(true);
-    };
+  const { data: teacherCourses } = useCollection<CourseData>(teacherCoursesQuery);
+  
+  const allSectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
+  const { data: allSections } = useCollection<SectionData>(allSectionsRef);
+  
+  const teacherSections = React.useMemo(() => {
+    if (userRole !== 'teacher' || !teacherCourses || !allSections) return allSections || [];
+    const sectionIds = new Set(teacherCourses.map(c => c.sectionId));
+    return allSections.filter(s => sectionIds.has(s.id));
+  }, [userRole, teacherCourses, allSections]);
 
-    const handleAssignToSection = async () => {
-        if (!selectedStudent || !selectedSection || !courses || !sections) {
-            toast({ variant: "destructive", title: "Error", description: "Por favor selecciona un estudiante y una sección." });
-            return;
-        }
+  const sectionsRef = useMemoFirebase(
+    () => (schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null),
+    [schoolId, firestore]
+  );
+  const { data: sections } = useCollection<SectionData>(sectionsRef);
 
-        const sectionData = sections.find(s => s.id === selectedSection);
-        if (!sectionData) {
-            toast({ variant: "destructive", title: "Error", description: "La sección seleccionada no es válida." });
-            return;
-        }
+  const gradesRef = useMemoFirebase(
+    () => (schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null),
+    [schoolId, firestore]
+  );
+  const { data: grades } = useCollection<GradeData>(gradesRef);
 
-        const coursesInSection = courses.filter(course => course.sectionId === selectedSection);
-        if (coursesInSection.length === 0) {
-            toast({ variant: "destructive", title: "Sin cursos", description: "Esta sección no tiene cursos asignados. Asigna cursos primero." });
-            setIsAssignDialogOpen(false);
-            return;
-        }
+  const coursesRef = useMemoFirebase(
+    () => (schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null),
+    [schoolId, firestore]
+  );
+  const { data: courses } = useCollection<CourseData>(coursesRef);
 
-        // 1. Update the student's document with sectionId and gradeId
-        const studentDocRef = doc(firestore, 'users', selectedStudent.id);
-        updateDocumentNonBlocking(studentDocRef, {
-            sectionId: sectionData.id,
-            gradeId: sectionData.gradeId,
-        });
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = React.useState(false);
+  const [selectedStudent, setSelectedStudent] = React.useState<UserData | null>(null);
+  const [selectedSection, setSelectedSection] = React.useState<string>('');
 
-        // 2. Enroll the student in all courses of that section
-        const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
-        // Note: For a real-world app, you might want to first check which courses the student is already enrolled in to avoid duplicates.
-        // For simplicity here, we'll add them. Firestore will create new documents with unique IDs.
-        for (const course of coursesInSection) {
-            await addDocumentNonBlocking(studentCoursesRef, {
-                studentId: selectedStudent.id,
-                courseId: course.id,
-            });
-        }
-        
-        toast({ title: "Estudiante Asignado", description: `${selectedStudent.firstName} ha sido inscrito en los cursos y actualizado.` });
-        setIsAssignDialogOpen(false);
-        setSelectedSection('');
-        setSelectedStudent(null);
-    };
+  const gradesMap =
+    React.useMemo(
+      () => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {},
+      [grades]
+    );
+  const sectionsMap =
+    React.useMemo(
+      () => sections?.reduce((acc, section) => ({ ...acc, [section.id]: section }), {} as Record<string, SectionData>) || {},
+      [sections]
+    );
 
+  const handleAssignClick = (student: UserData) => {
+    setSelectedStudent(student);
+    setSelectedSection(student.sectionId || '');
+    setIsAssignDialogOpen(true);
+  };
+
+  const handleAssignToSection = async () => {
+    if (!selectedStudent || !selectedSection || !courses || !sections) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Por favor selecciona un estudiante y una sección.',
+      });
+      return;
+    }
+
+    const sectionData = sections.find((s) => s.id === selectedSection);
+    if (!sectionData) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'La sección seleccionada no es válida.',
+      });
+      return;
+    }
+
+    const coursesInSection = courses.filter((course) => course.sectionId === selectedSection);
+    if (coursesInSection.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Sin cursos',
+        description: 'Esta sección no tiene cursos asignados. Asigna cursos primero.',
+      });
+      setIsAssignDialogOpen(false);
+      return;
+    }
+
+    // 1. Update the student's document with sectionId and gradeId
+    const studentDocRef = doc(firestore, 'users', selectedStudent.id);
+    updateDocumentNonBlocking(studentDocRef, {
+      sectionId: sectionData.id,
+      gradeId: sectionData.gradeId,
+    });
+
+    // 2. Enroll the student in all courses of that section
+    const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
+    // Note: For a real-world app, you might want to first check which courses the student is already enrolled in to avoid duplicates.
+    // For simplicity here, we'll add them. Firestore will create new documents with unique IDs.
+    for (const course of coursesInSection) {
+      await addDocumentNonBlocking(studentCoursesRef, {
+        studentId: selectedStudent.id,
+        courseId: course.id,
+      });
+    }
+
+    toast({
+      title: 'Estudiante Asignado',
+      description: `${selectedStudent.firstName} ha sido inscrito en los cursos y actualizado.`,
+    });
+    setIsAssignDialogOpen(false);
+    setSelectedSection('');
+    setSelectedStudent(null);
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold tracking-tight">Gestión de Estudiantes</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight">Gestión de Estudiantes</h1>
+        {userRole === 'teacher' && (
+             <div className="w-1/3">
+                 <Select onValueChange={setSelectedSectionFilter} value={selectedSectionFilter}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Selecciona una sección para ver estudiantes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {teacherSections.map((section) => (
+                            <SelectItem key={section.id} value={section.id}>
+                               {gradesMap[section.gradeId] || 'Grado desconocido'} - {section.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        )}
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Listado de Estudiantes</CardTitle>
@@ -170,7 +256,7 @@ export default function StudentsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-           <Table>
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>
@@ -183,24 +269,33 @@ export default function StudentsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
+              {isLoading && (
+                 <TableRow>
                   <TableCell colSpan={5} className="text-center">
                     Cargando estudiantes...
                   </TableCell>
                 </TableRow>
-              ) : students && students.length > 0 ? (
+              )}
+              {!isLoading && (!students || students.length === 0) && userRole === 'teacher' && !selectedSectionFilter && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center h-24">
+                   Por favor, selecciona una sección para ver la lista de estudiantes.
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoading && students && students.length > 0 ? (
                 students.map((student) => (
                   <TableRow key={student.id}>
                     <TableCell className="font-medium">
                       {student.firstName} {student.lastName}
                     </TableCell>
                     <TableCell>{student.email}</TableCell>
-                     <TableCell>
-                        {student.sectionId && sectionsMap[student.sectionId]
-                            ? `${gradesMap[sectionsMap[student.sectionId].gradeId] || ''} - ${sectionsMap[student.sectionId].name}`
-                            : <span className="text-muted-foreground">No asignado</span>
-                        }
+                    <TableCell>
+                      {student.sectionId && sectionsMap[student.sectionId] ? (
+                        `${gradesMap[sectionsMap[student.sectionId].gradeId] || ''} - ${sectionsMap[student.sectionId].name}`
+                      ) : (
+                        <span className="text-muted-foreground">No asignado</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{student.role}</Badge>
@@ -214,19 +309,21 @@ export default function StudentsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleAssignClick(student)}>
-                            Asignar a Sección
-                          </DropdownMenuItem>
+                          {userRole === 'admin' && (
+                            <DropdownMenuItem onClick={() => handleAssignClick(student)}>
+                                Asignar a Sección
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
-              ) : (
+              ) : !isLoading && selectedSectionFilter && (
                  <TableRow>
                   <TableCell colSpan={5} className="text-center">
-                    No hay estudiantes registrados.
+                    No hay estudiantes en la sección seleccionada.
                   </TableCell>
                 </TableRow>
               )}
@@ -234,36 +331,40 @@ export default function StudentsPage() {
           </Table>
         </CardContent>
       </Card>
-      
+
       <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
         <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Asignar Estudiante a Sección</DialogTitle>
-                <DialogDescription>
-                    Selecciona la sección a la que quieres asignar a {selectedStudent?.firstName} {selectedStudent?.lastName}. El estudiante será inscrito en todos los cursos de esa sección.
-                </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                    <Label htmlFor="section">Sección</Label>
-                    <Select onValueChange={setSelectedSection} value={selectedSection}>
-                        <SelectTrigger id="section">
-                            <SelectValue placeholder="Selecciona una sección" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {sections?.map(section => (
-                                <SelectItem key={section.id} value={section.id}>
-                                    {gradesMap[section.gradeId] || 'Grado desconocido'} - {section.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+          <DialogHeader>
+            <DialogTitle>Asignar Estudiante a Sección</DialogTitle>
+            <DialogDescription>
+              Selecciona la sección a la que quieres asignar a {selectedStudent?.firstName}{' '}
+              {selectedStudent?.lastName}. El estudiante será inscrito en todos los cursos de esa
+              sección.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="section">Sección</Label>
+              <Select onValueChange={setSelectedSection} value={selectedSection}>
+                <SelectTrigger id="section">
+                  <SelectValue placeholder="Selecciona una sección" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allSections?.map((section) => (
+                    <SelectItem key={section.id} value={section.id}>
+                      {gradesMap[section.gradeId] || 'Grado desconocido'} - {section.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleAssignToSection}>Asignar</Button>
-            </DialogFooter>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleAssignToSection}>Asignar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
