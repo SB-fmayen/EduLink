@@ -53,6 +53,34 @@ service cloud.firestore {
       return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
     }
 
+    /**
+     * Checks if a teacher is authorized to query users for a specific section.
+     * This function is crucial for allowing teachers to list students of their classes.
+     */
+    function isTeacherForSectionQuery(schoolId) {
+      // 1. The user must be a teacher.
+      let isTeacher = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+      // 2. The query MUST filter by 'sectionId'.
+      let hasSectionIdFilter = request.query.where.keys().hasAll(['sectionId']);
+      // 3. The query MUST NOT have more filters than allowed (only sectionId and role).
+      let allowedFilters = ['sectionId', 'role'];
+      let hasOnlyAllowedFilters = request.query.where.keys().hasOnly(allowedFilters);
+      
+      if (!isTeacher || !hasSectionIdFilter || !hasOnlyAllowedFilters) {
+        return false;
+      }
+      
+      // 4. The teacher must be assigned to at least one course in the queried section.
+      let queriedSectionId = request.query.where.get('sectionId')[2]; // [field, op, value]
+      
+      // Check if any course taught by this teacher belongs to the queried section.
+      return exists(
+        /databases/$(database)/documents/schools/$(schoolId)/courses
+          .where('teacherId', '==', request.auth.uid)
+          .where('sectionId', '==', queriedSectionId)
+      );
+    }
+
     match /schools/{schoolId} {
       allow get, list: if isSignedIn();
       allow create, update, delete: if isAdmin();
@@ -106,8 +134,10 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow admins to get any user, and users to get their own profile
       allow get: if isOwner(userId) || isAdmin();
-      // Allow admins to list users. Also allow teachers to list students in their school.
-      allow list: if isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher');
+      
+      // Admins can list all users. Teachers can list users ONLY if they query for a specific section they teach.
+      allow list: if isAdmin() || isTeacherForSectionQuery(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId);
+
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
