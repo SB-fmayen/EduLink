@@ -533,9 +533,9 @@ function SectionsManager() {
     const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
     const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
+    // This query now requires a composite index: (schoolId ASC, role ASC).
     const teachersQuery = useMemoFirebase(() => {
         if (!firestore || !schoolId) return null;
-        // This query now requires a composite index. The user will be prompted to create it.
         return query(
             collection(firestore, 'users'), 
             where('schoolId', '==', schoolId), 
@@ -835,6 +835,7 @@ function SectionsManager() {
                                                     {teachers?.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
+                                            {teachersError && <FormMessage>Error al cargar profesores. Asegúrate de que el índice de Firestore esté creado.</FormMessage>}
                                             <FormMessage />
                                         </FormItem>
                                     )} />

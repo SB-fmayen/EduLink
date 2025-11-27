@@ -4,7 +4,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useDoc, useUser, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
-import { doc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, collectionGroup } from 'firebase/firestore';
 import { Role } from '@/lib/roles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Users, Activity, FileText, MessageSquare, Bell, BarChart2 } from 'lucide-react';
@@ -22,11 +22,6 @@ interface UserProfile {
   schoolId: string;
 }
 
-interface StudentEnrollment {
-  studentId: string;
-  courseId: string; // The parent document ID (the course)
-}
-
 interface Course {
     id: string;
     subjectId: string;
@@ -36,9 +31,10 @@ interface Course {
     gradeId?: string; // Asumiendo que los cursos pueden tener gradeId
 }
 
-interface Subject {
+interface SectionData {
     id: string;
     name: string;
+    gradeId: string;
 }
 
 interface GradeData {
@@ -46,11 +42,6 @@ interface GradeData {
     name: string;
 }
 
-interface SectionData {
-    id: string;
-    name: string;
-    gradeId: string;
-}
 
 interface CourseCardProps {
   courseId: string;
@@ -99,7 +90,7 @@ function CourseCard({ courseId, schoolId }: CourseCardProps) {
             <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 hover:bg-white">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 hover:bg-white" onClick={(e) => e.preventDefault()}>
                             <MoreVertical className="h-4 w-4 text-gray-700"/>
                         </Button>
                     </DropdownMenuTrigger>
@@ -197,66 +188,39 @@ function AdminParentDashboard() {
 function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserProfile }) {
   const firestore = useFirestore();
 
-  // Estados para los filtros
   const [selectedGrade, setSelectedGrade] = React.useState('all');
   const [selectedSection, setSelectedSection] = React.useState('all');
   
-  // Nuevo estado para almacenar los cursos de un estudiante
+  // States for student and teacher courses
   const [studentCourseIds, setStudentCourseIds] = React.useState<string[] | null>(null);
   const [isLoadingStudentCourses, setIsLoadingStudentCourses] = React.useState(true);
-
-
-  // Cargar datos para los filtros
+  
+  // Data for filters
   const gradesRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/grades`) : null, [firestore, profile.schoolId]);
   const { data: grades } = useCollection<GradeData>(gradesRef);
   
   const sectionsRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/sections`) : null, [firestore, profile.schoolId]);
   const { data: allSections } = useCollection<SectionData>(sectionsRef);
   
-  // Mapa de grados para buscar nombres fácilmente
   const gradesMap = React.useMemo(() => {
     if (!grades) return {};
-    return grades.reduce((acc, grade) => {
-        acc[grade.id] = grade.name;
-        return acc;
-    }, {} as Record<string, string>);
+    return grades.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>);
   }, [grades]);
 
-  // Filtrar secciones basadas en el grado seleccionado
   const filteredSections = React.useMemo(() => {
     if (!allSections) return [];
     if (selectedGrade === 'all') return allSections;
     return allSections.filter(section => section.gradeId === selectedGrade);
   }, [selectedGrade, allSections]);
 
-
-  // Lógica para estudiantes (NUEVA)
+  // Fetch student enrollments using collectionGroup query
+  // This requires a composite index: (students collection group, studentId ASC)
   React.useEffect(() => {
     if (profile.role !== 'student' || !user) {
         setIsLoadingStudentCourses(false);
         return;
     }
     
-    const fetchStudentCourses = async () => {
-        setIsLoadingStudentCourses(true);
-        const enrollmentsQuery = query(
-            collection(firestore, `schools/${profile.schoolId}/courses`),
-            where('studentId', '==', user.uid)
-        );
-
-        try {
-            const enrollmentsSnapshot = await getDocs(query(collection(firestore, `schools/${profile.schoolId}/students`), where('studentId', '==', user.uid)));
-            const courseIds = enrollmentsSnapshot.docs.map(doc => doc.ref.parent.parent!.id);
-            setStudentCourseIds(courseIds);
-        } catch (error) {
-            console.error("Error fetching student enrollments: ", error);
-            setStudentCourseIds([]);
-        } finally {
-            setIsLoadingStudentCourses(false);
-        }
-    };
-    
-    // Esta es una collectionGroup query, necesita un índice compuesto.
     const fetchStudentEnrollments = async () => {
         setIsLoadingStudentCourses(true);
         const enrollmentsQuery = query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid));
@@ -272,10 +236,8 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
         }
     }
     
-    // fetchStudentEnrollments(); // Deshabilitado por ahora para evitar errores de indice
-    setIsLoadingStudentCourses(false); // Temporalmente se deshabilita la carga
-
-  }, [firestore, user, profile.role, profile.schoolId]);
+    fetchStudentEnrollments();
+  }, [firestore, user, profile.role]);
 
 
   // Lógica para profesores
@@ -306,7 +268,6 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
         if (!teacherCourses || !sectionsMap) return [];
         let finalCourses = teacherCourses;
 
-        // Aplicar filtro de grado
         if (selectedGrade !== 'all') {
           finalCourses = finalCourses.filter(course => {
             const section = sectionsMap[course.sectionId];
@@ -314,7 +275,6 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
           });
         }
 
-        // Aplicar filtro de sección
         if (selectedSection !== 'all') {
           finalCourses = finalCourses.filter(course => course.sectionId === selectedSection);
         }
@@ -383,7 +343,7 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
           ) : (
              <div className="col-span-full text-center py-10">
                 <p className="text-muted-foreground">
-                    {profile.role === 'student' ? "Aún no estás inscrito en ningún curso." : "No tienes cursos que coincidan con los filtros seleccionados."}
+                    {profile.role === 'student' ? "Aún no estás inscrito en ningún curso. Si esto es un error, contacta a tu administrador." : "No tienes cursos que coincidan con los filtros seleccionados."}
                 </p>
              </div>
           )}

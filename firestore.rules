@@ -49,6 +49,16 @@ service cloud.firestore {
       let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
       return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
     }
+    
+    // --- Collection Group Rules ---
+    match /{path=**}/students/{studentId} {
+      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      // Allow a student to read their own enrollment records via a collection group query
+      // This is essential for the student dashboard to find courses.
+      // This requires a composite index on (students collection group, studentId ASC)
+      allow get: if isOwner(resource.data.studentId) || isAdmin(userProfile);
+      allow list: if request.query.where.studentId == request.auth.uid;
+    }
 
     match /schools/{schoolId} {
       let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
@@ -79,7 +89,7 @@ service cloud.firestore {
         allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile));
 
         match /students/{studentId} {
-           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
+           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile) || isOwner(studentId);
            allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
         }
       }
@@ -126,7 +136,8 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
       // Admins can list users if the query is scoped by 'role' and 'schoolId'.
-      allow list: if isAdmin(userProfile) && 'role' in request.query.where && 'schoolId' in request.query.where;
+      // This requires a composite index on (schoolId ASC, role ASC).
+      allow list: if isAdmin(userProfile) && request.query.where.schoolId is string && request.query.where.role is string;
 
       // New users can create their own profile.
       allow create: if isOwner(userId);
