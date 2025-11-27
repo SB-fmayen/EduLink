@@ -1,167 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Logo } from '@/components/logo';
-import { useAuth } from '@/firebase';
-import { useToast } from '@/hooks/use-toast';
-import { doc, setDoc } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
-import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import React, { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-
-const formSchema = z.object({
-  fullName: z.string().min(2, { message: 'El nombre completo debe tener al menos 2 caracteres.' }),
-  email: z.string().email({ message: 'Correo electrónico inválido.' }),
-  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
-});
-
 
 export default function SignupPage() {
-  const auth = useAuth();
-  const firestore = useFirestore();
-  const { toast } = useToast();
-  const [showPassword, setShowPassword] = useState(false);
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      fullName: '',
-      email: '',
-      password: '',
-    },
-  });
-
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!auth || !firestore) return;
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user;
-      
-      const [firstName, ...lastNameParts] = values.fullName.split(' ');
-      const lastName = lastNameParts.join(' ');
-
-      const userRef = doc(firestore, 'users', user.uid);
-      setDocumentNonBlocking(userRef, {
-        id: user.uid,
-        firstName: firstName,
-        lastName: lastName,
-        email: values.email,
-        role: 'student', // Rol por defecto
-        schoolId: 'default-school-id', // Asignar un ID de escuela por defecto o nulo
-      }, { merge: true });
-
-      // La redirección será manejada por el layout al detectar el usuario
-      
-    } catch (error: any) {
-        if (error.code === 'auth/email-already-in-use') {
-           form.setError('email', { message: 'Este correo electrónico ya está en uso.' });
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Error al crear la cuenta',
-                description: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.',
-            });
-        }
-    }
-  }
-
   return (
     <Card className="mx-auto max-w-sm w-full">
       <CardHeader className="space-y-4">
         <div className="flex justify-center">
           <Logo />
         </div>
-        <CardTitle className="text-2xl text-center">Crear Cuenta</CardTitle>
+        <CardTitle className="text-2xl text-center">Creación de Cuentas</CardTitle>
         <CardDescription className="text-center">
-          Crea tu cuenta en EduLink
+          Para garantizar la integridad y seguridad de la comunidad escolar, la creación de nuevas cuentas de usuario (profesores, estudiantes, padres) debe ser realizada por un administrador de la escuela.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
-            <FormField
-              control={form.control}
-              name="fullName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nombre completo</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Doe" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Correo Electrónico</FormLabel>
-                  <FormControl>
-                    <Input placeholder="m@ejemplo.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Contraseña</FormLabel>
-                  <div className="relative">
-                    <FormControl>
-                      <Input type={showPassword ? 'text' : 'password'} {...field} />
-                    </FormControl>
-                     <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
-                      )}
-                    </button>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Creando cuenta...' : 'Crear una cuenta'}
-            </Button>
-          </form>
-        </Form>
-        <div className="mt-4 text-center text-sm">
-          ¿Ya tienes una cuenta?{' '}
+      <CardContent className="text-center text-sm">
+        Si ya tienes una cuenta, por favor, inicia sesión. Si eres un nuevo miembro, contacta al administrador de tu institución para que cree tu cuenta.
+        <div className="mt-4">
           <Link href="/login" className="underline">
-            Iniciar Sesión
+            Ir a Iniciar Sesión
           </Link>
         </div>
       </CardContent>

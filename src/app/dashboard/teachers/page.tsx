@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React from 'react';
@@ -33,8 +31,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal } from 'lucide-react';
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useAuth } from '@/firebase';
 import { collection, query, where, doc, documentId, writeBatch } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
@@ -46,6 +44,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 interface UserData {
   id: string;
@@ -67,19 +66,30 @@ const teacherFormSchema = z.object({
   schoolId: z.string({ required_error: 'Debe seleccionar una escuela.'}).min(1, 'Debe seleccionar una escuela.'),
 });
 
+const newTeacherFormSchema = z.object({
+  firstName: z.string().min(2, { message: 'El nombre es requerido.' }),
+  lastName: z.string().min(2, { message: 'El apellido es requerido.' }),
+  email: z.string().email({ message: 'El correo electrónico no es válido.' }),
+  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
+});
 
 export default function TeachersPage() {
   const firestore = useFirestore();
+  const auth = useAuth();
   const { user } = useUser();
   const router = useRouter();
 
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
   const { data: userData } = useDoc<{ schoolId: string, role: Role }>(userDocRef);
   const userRole = userData?.role;
+  const adminSchoolId = userData?.schoolId;
 
   const teachersQuery = useMemoFirebase(() => {
+    if (userRole === 'admin' && adminSchoolId) {
+      return query(collection(firestore, 'users'), where('schoolId', '==', adminSchoolId), where('role', '==', 'teacher'));
+    }
     return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
-  }, [firestore]);
+  }, [firestore, userRole, adminSchoolId]);
 
   const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
 
@@ -97,9 +107,11 @@ export default function TeachersPage() {
 
 
   const [isModifyDialogOpen, setIsModifyDialogOpen] = React.useState(false);
+  const [isNewTeacherDialogOpen, setIsNewTeacherDialogOpen] = React.useState(false);
   const [selectedTeacher, setSelectedTeacher] = React.useState<UserData | null>(null);
+  const [showPassword, setShowPassword] = React.useState(false);
 
-  const form = useForm<z.infer<typeof teacherFormSchema>>({
+  const modifyForm = useForm<z.infer<typeof teacherFormSchema>>({
     resolver: zodResolver(teacherFormSchema),
     defaultValues: {
       firstName: '',
@@ -108,15 +120,25 @@ export default function TeachersPage() {
     },
   });
 
+  const newTeacherForm = useForm<z.infer<typeof newTeacherFormSchema>>({
+    resolver: zodResolver(newTeacherFormSchema),
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
+    },
+  });
+
   React.useEffect(() => {
     if (selectedTeacher) {
-      form.reset({
+      modifyForm.reset({
         firstName: selectedTeacher.firstName,
         lastName: selectedTeacher.lastName,
         schoolId: selectedTeacher.schoolId,
       });
     }
-  }, [selectedTeacher, form]);
+  }, [selectedTeacher, modifyForm]);
   
   const handleModifyClick = (teacher: UserData) => {
     setSelectedTeacher(teacher);
@@ -127,7 +149,7 @@ export default function TeachersPage() {
     router.push(`/dashboard/teachers/${teacherId}`);
   };
 
-  const onSubmit = async (values: z.infer<typeof teacherFormSchema>) => {
+  const onModifySubmit = async (values: z.infer<typeof teacherFormSchema>) => {
     if (!selectedTeacher) return;
 
     const teacherDocRef = doc(firestore, 'users', selectedTeacher.id);
@@ -135,18 +157,13 @@ export default function TeachersPage() {
     const newSchoolId = values.schoolId;
 
     const batch = writeBatch(firestore);
-
-    // 1. Update the main user document
     batch.update(teacherDocRef, values);
 
-    // 2. If school has changed, remove from old school's teachers subcollection
     if (oldSchoolId && oldSchoolId !== newSchoolId) {
         const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
         batch.delete(oldTeacherRef);
     }
     
-    // 3. ALWAYS set the teacher in the new school's subcollection
-    // This ensures creation even if the school wasn't changed but the doc didn't exist
     const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
     batch.set(newTeacherRef, { id: selectedTeacher.id }, { merge: true });
 
@@ -158,20 +175,67 @@ export default function TeachersPage() {
         });
     } catch (error) {
         console.error("Error updating teacher:", error);
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "No se pudo actualizar la información del profesor.",
-        });
+        toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar la información del profesor." });
     }
     
     setIsModifyDialogOpen(false);
   };
 
+  const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
+    if (!auth || !adminSchoolId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información del administrador.' });
+      return;
+    }
+
+    try {
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const newUser = userCredential.user;
+
+      const userPayload: UserData = {
+        id: newUser.uid,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        role: 'teacher',
+        schoolId: adminSchoolId,
+      };
+
+      // Create user profile and school reference in Firestore
+      const batch = writeBatch(firestore);
+      const userDocRef = doc(firestore, 'users', newUser.uid);
+      batch.set(userDocRef, userPayload);
+
+      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
+      batch.set(schoolTeacherRef, { id: newUser.uid });
+
+      await batch.commit();
+
+      toast({ title: 'Profesor Creado', description: 'La cuenta del nuevo profesor ha sido creada con éxito.' });
+      setIsNewTeacherDialogOpen(false);
+      newTeacherForm.reset();
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        newTeacherForm.setError('email', { message: 'Este correo ya está en uso.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Error al crear profesor', description: 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.' });
+        console.error(error);
+      }
+    }
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold tracking-tight">Gestión de Profesores</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Gestión de Profesores</h1>
+        {userRole === 'admin' && (
+          <Button onClick={() => setIsNewTeacherDialogOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Crear Profesor
+          </Button>
+        )}
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Listado de Profesores</CardTitle>
@@ -252,48 +316,32 @@ export default function TeachersPage() {
                     Actualiza la información y la escuela asignada para {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
                 </DialogDescription>
             </DialogHeader>
-            <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
+            <Form {...modifyForm}>
+                <form onSubmit={modifyForm.handleSubmit(onModifySubmit)} className="grid gap-4 py-4">
                     <FormField
-                        control={form.control}
+                        control={modifyForm.control}
                         name="firstName"
                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Nombre</FormLabel>
-                                <FormControl><Input {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
+                            <FormItem><FormLabel>Nombre</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                         )}
                     />
                      <FormField
-                        control={form.control}
+                        control={modifyForm.control}
                         name="lastName"
                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Apellido</FormLabel>
-                                <FormControl><Input {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
+                            <FormItem><FormLabel>Apellido</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                         )}
                     />
                     <FormField
-                        control={form.control}
+                        control={modifyForm.control}
                         name="schoolId"
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Escuela</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecciona una escuela" />
-                                        </SelectTrigger>
-                                    </FormControl>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una escuela" /></SelectTrigger></FormControl>
                                     <SelectContent>
-                                        {schools?.map((school) => (
-                                            <SelectItem key={school.id} value={school.id}>
-                                                {school.name}
-                                            </SelectItem>
-                                        ))}
+                                        {schools?.map((school) => (<SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>))}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -305,6 +353,43 @@ export default function TeachersPage() {
                     </DialogFooter>
                 </form>
             </Form>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isNewTeacherDialogOpen} onOpenChange={setIsNewTeacherDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Crear Nuevo Profesor</DialogTitle>
+            <DialogDescription>
+              Introduce los datos para crear una nueva cuenta de profesor. El profesor será asignado a tu escuela.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...newTeacherForm}>
+            <form onSubmit={newTeacherForm.handleSubmit(onNewTeacherSubmit)} className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={newTeacherForm.control} name="firstName" render={({ field }) => ( <FormItem><FormLabel>Nombre</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                <FormField control={newTeacherForm.control} name="lastName" render={({ field }) => ( <FormItem><FormLabel>Apellido</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+              </div>
+              <FormField control={newTeacherForm.control} name="email" render={({ field }) => ( <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem> )} />
+              <FormField control={newTeacherForm.control} name="password" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Contraseña</FormLabel>
+                  <div className="relative">
+                    <FormControl><Input type={showPassword ? 'text' : 'password'} {...field} /></FormControl>
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3">
+                      {showPassword ? <EyeOff className="h-4 w-4 text-gray-500" /> : <Eye className="h-4 w-4 text-gray-500" />}
+                    </button>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="submit" disabled={newTeacherForm.formState.isSubmitting}>
+                  {newTeacherForm.formState.isSubmitting ? 'Creando...' : 'Crear Cuenta'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>
