@@ -27,7 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, documentId } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, documentId, collectionGroup } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClipboardList, FileText, Megaphone } from 'lucide-react';
@@ -48,6 +48,11 @@ interface Student {
     email: string;
 }
 
+interface StudentCourseLink {
+    studentId: string;
+    courseId: string;
+}
+
 function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: string }) {
     const firestore = useFirestore();
     const [students, setStudents] = React.useState<Student[]>([]);
@@ -59,30 +64,32 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
     React.useEffect(() => {
         const fetchStudents = async () => {
-            if (!firestore || !course?.sectionId) {
-                setIsLoadingStudents(false);
-                return;
-            };
+            if (!firestore || !courseId) return;
 
             setIsLoadingStudents(true);
-            setStudents([]);
-
             try {
-                 const studentsQuery = query(
-                    collection(firestore, 'users'), 
-                    where('sectionId', '==', course.sectionId)
+                // 1. Find all studentCourse documents that match the current courseId
+                const studentCoursesQuery = query(
+                    collectionGroup(firestore, 'studentCourses'),
+                    where('courseId', '==', courseId)
                 );
-                
-                const studentsSnapshot = await getDocs(studentsQuery);
-                if (studentsSnapshot.empty) {
-                    setStudents([]);
-                } else {
-                    const enrolledStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-                    setStudents(enrolledStudents);
-                }
+                const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
+                const studentIds = studentCoursesSnapshot.docs.map(doc => doc.data().studentId);
 
+                // 2. If we found students, fetch their user profiles
+                if (studentIds.length > 0) {
+                    const studentsQuery = query(
+                        collection(firestore, 'users'),
+                        where(documentId(), 'in', studentIds)
+                    );
+                    const studentsSnapshot = await getDocs(studentsQuery);
+                    const studentsData = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+                    setStudents(studentsData);
+                } else {
+                    setStudents([]);
+                }
             } catch (error) {
-                console.error("Error fetching students for course:", error);
+                console.error("Error fetching students:", error);
                 setStudents([]);
             } finally {
                 setIsLoadingStudents(false);
@@ -90,7 +97,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
         };
 
         fetchStudents();
-    }, [course?.sectionId, firestore]);
+    }, [courseId, firestore]);
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
@@ -145,7 +152,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={4} className="text-center h-24">
-                                    No hay estudiantes inscritos en esta sección.
+                                    No hay estudiantes inscritos en este curso.
                                 </TableCell>
                             </TableRow>
                         )}
