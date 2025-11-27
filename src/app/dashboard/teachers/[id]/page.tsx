@@ -93,7 +93,7 @@ function TeacherCourses({ teacherId, schoolId }: { teacherId: string, schoolId: 
 
 
 export default function TeacherProfilePage({ params }: { params: { id: string } }) {
-  const teacherId = params.id;
+  const teacherId = React.use(params).id;
   const firestore = useFirestore();
   const { user } = useUser();
 
