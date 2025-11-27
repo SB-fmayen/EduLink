@@ -82,7 +82,7 @@ service cloud.firestore {
         }
 
         allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isMemberOfSchool(userProfile, schoolId);
+        allow list: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
         allow create: if isAdmin(userProfile);
         allow update, delete: if (isTeacherOfCourse() || isAdmin(userProfile));
 
