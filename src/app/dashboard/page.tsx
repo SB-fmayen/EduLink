@@ -207,9 +207,18 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
   const sectionsRef = useMemoFirebase(() => profile.schoolId ? collection(firestore, `schools/${profile.schoolId}/sections`) : null, [firestore, profile.schoolId]);
   const { data: allSections } = useCollection<SectionData>(sectionsRef);
   
+  // Mapa de grados para buscar nombres fácilmente
+  const gradesMap = React.useMemo(() => {
+    if (!grades) return {};
+    return grades.reduce((acc, grade) => {
+        acc[grade.id] = grade.name;
+        return acc;
+    }, {} as Record<string, string>);
+  }, [grades]);
+
   // Filtrar secciones basadas en el grado seleccionado
   const filteredSections = React.useMemo(() => {
-    if (!allSections) return []; // Asegurarse de que sea siempre un array
+    if (!allSections) return [];
     if (selectedGrade === 'all') return allSections;
     return allSections.filter(section => section.gradeId === selectedGrade);
   }, [selectedGrade, allSections]);
@@ -291,13 +300,17 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
                         {grades?.map(grade => <SelectItem key={grade.id} value={grade.id}>{grade.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
-                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={selectedGrade === 'all' && filteredSections.length === 0}>
-                    <SelectTrigger className="w-[180px]">
+                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={filteredSections.length === 0}>
+                    <SelectTrigger className="w-[220px]">
                         <SelectValue placeholder="Filtrar por sección" />
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">Todas las secciones</SelectItem>
-                        {filteredSections.map(section => <SelectItem key={section.id} value={section.id}>{section.name}</SelectItem>)}
+                        {filteredSections.map(section => (
+                            <SelectItem key={section.id} value={section.id}>
+                                {gradesMap[section.gradeId] || 'Grado desc.'} - {section.name}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
