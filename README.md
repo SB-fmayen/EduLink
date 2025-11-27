@@ -50,9 +50,11 @@ Para que ciertas consultas complejas en la aplicación funcionen correctamente y
 
 ### Cómo Crear los Índices
 
-Puedes crear estos índices usando el enlace que se genera en el mensaje de error en la consola del navegador o creándolos manualmente en la consola de Firebase.
+Puedes crear estos índices manualmente en la Consola de Firebase.
 
-Ve a **Firestore Database > Índices > Compuesto > Crear índice**.
+1.  Ve a tu proyecto en la [Consola de Firebase](https://console.firebase.google.com/).
+2.  En el menú de la izquierda, selecciona **Compilación > Firestore Database**.
+3.  Ve a la pestaña **Índices** y haz clic en **Crear índice**.
 
 ### Índice 1: Para Consultar Usuarios por Escuela y Rol
 
@@ -60,8 +62,8 @@ Este índice es fundamental para poder listar profesores o estudiantes que perte
 
 - **ID de colección**: `users`
 - **Campos a indexar**:
-    1. `schoolId` - Ascendente
-    2. `role` - Ascendente
+    1. `schoolId` - **Ascendente**
+    2. `role` - **Ascendente**
 - **Ámbito de la consulta**: Colección
 
 ### Índice 2: Para Consultar los Cursos de un Estudiante
@@ -70,7 +72,7 @@ Este índice utiliza un "grupo de colecciones" para permitir que un estudiante e
 
 - **ID del grupo de colecciones**: `students`
 - **Campos a indexar**:
-    1. `studentId` - Ascendente
+    1. `studentId` - **Ascendente**
 - **Ámbito de la consulta**: Grupo de colecciones
 
 Una vez que crees estos índices, Firestore tardará unos minutos en construirlos. Después de eso, las consultas que antes fallaban deberían funcionar correctamente.
