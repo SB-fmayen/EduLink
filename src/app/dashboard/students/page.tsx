@@ -33,10 +33,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { toast } from '@/hooks/use-toast';
 import {
   Select,
@@ -54,6 +54,8 @@ interface UserData {
   email: string;
   role: Role;
   schoolId: string;
+  sectionId?: string;
+  gradeId?: string;
 }
 
 interface SectionData {
@@ -105,15 +107,23 @@ export default function StudentsPage() {
     const [selectedSection, setSelectedSection] = React.useState<string>('');
 
     const gradesMap = React.useMemo(() => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {}, [grades]);
+    const sectionsMap = React.useMemo(() => sections?.reduce((acc, section) => ({ ...acc, [section.id]: section }), {} as Record<string, SectionData>) || {}, [sections]);
 
     const handleAssignClick = (student: UserData) => {
         setSelectedStudent(student);
+        setSelectedSection(student.sectionId || '');
         setIsAssignDialogOpen(true);
     };
 
     const handleAssignToSection = async () => {
-        if (!selectedStudent || !selectedSection || !courses) {
+        if (!selectedStudent || !selectedSection || !courses || !sections) {
             toast({ variant: "destructive", title: "Error", description: "Por favor selecciona un estudiante y una sección." });
+            return;
+        }
+
+        const sectionData = sections.find(s => s.id === selectedSection);
+        if (!sectionData) {
+            toast({ variant: "destructive", title: "Error", description: "La sección seleccionada no es válida." });
             return;
         }
 
@@ -124,8 +134,17 @@ export default function StudentsPage() {
             return;
         }
 
-        const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
+        // 1. Update the student's document with sectionId and gradeId
+        const studentDocRef = doc(firestore, 'users', selectedStudent.id);
+        updateDocumentNonBlocking(studentDocRef, {
+            sectionId: sectionData.id,
+            gradeId: sectionData.gradeId,
+        });
 
+        // 2. Enroll the student in all courses of that section
+        const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
+        // Note: For a real-world app, you might want to first check which courses the student is already enrolled in to avoid duplicates.
+        // For simplicity here, we'll add them. Firestore will create new documents with unique IDs.
         for (const course of coursesInSection) {
             await addDocumentNonBlocking(studentCoursesRef, {
                 studentId: selectedStudent.id,
@@ -133,7 +152,7 @@ export default function StudentsPage() {
             });
         }
         
-        toast({ title: "Estudiante Asignado", description: `${selectedStudent.firstName} ha sido inscrito en todos los cursos de la sección.` });
+        toast({ title: "Estudiante Asignado", description: `${selectedStudent.firstName} ha sido inscrito en los cursos y actualizado.` });
         setIsAssignDialogOpen(false);
         setSelectedSection('');
         setSelectedStudent(null);
@@ -147,7 +166,7 @@ export default function StudentsPage() {
         <CardHeader>
           <CardTitle>Listado de Estudiantes</CardTitle>
           <CardDescription>
-            Consulta y administra la información de los estudiantes.
+            Consulta, administra y asigna estudiantes a sus secciones.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -156,6 +175,7 @@ export default function StudentsPage() {
               <TableRow>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Sección Asignada</TableHead>
                 <TableHead>Rol</TableHead>
                 <TableHead>
                   <span className="sr-only">Acciones</span>
@@ -165,7 +185,7 @@ export default function StudentsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center">
+                  <TableCell colSpan={5} className="text-center">
                     Cargando estudiantes...
                   </TableCell>
                 </TableRow>
@@ -176,6 +196,12 @@ export default function StudentsPage() {
                       {student.firstName} {student.lastName}
                     </TableCell>
                     <TableCell>{student.email}</TableCell>
+                     <TableCell>
+                        {student.sectionId && sectionsMap[student.sectionId]
+                            ? `${gradesMap[sectionsMap[student.sectionId].gradeId] || ''} - ${sectionsMap[student.sectionId].name}`
+                            : <span className="text-muted-foreground">No asignado</span>
+                        }
+                    </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{student.role}</Badge>
                     </TableCell>
@@ -199,7 +225,7 @@ export default function StudentsPage() {
                 ))
               ) : (
                  <TableRow>
-                  <TableCell colSpan={4} className="text-center">
+                  <TableCell colSpan={5} className="text-center">
                     No hay estudiantes registrados.
                   </TableCell>
                 </TableRow>
