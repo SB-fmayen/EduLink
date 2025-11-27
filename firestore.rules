@@ -75,6 +75,11 @@ service cloud.firestore {
         function isTeacherOfCourse() {
           return isSignedIn() && get(path).data.teacherId == request.auth.uid;
         }
+        
+        function isTeacherOfCourseById(courseId) {
+          let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
+          return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+        }
 
         allow get: if isMemberOfSchool(userProfile, schoolId);
         allow list: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
@@ -82,8 +87,8 @@ service cloud.firestore {
         allow update, delete: if (isTeacherOfCourse() || isAdmin(userProfile));
 
         match /students/{studentId} {
-          allow get, list: if isTeacherOfCourse() || isAdmin(userProfile);
-          allow create, update, delete: if isTeacherOfCourse() || isAdmin(userProfile);
+           allow get, list: if isTeacherOfCourseById(courseId) || isAdmin(userProfile);
+           allow create, update, delete: if isTeacherOfCourseById(courseId) || isAdmin(userProfile);
         }
       }
 
@@ -132,8 +137,8 @@ service cloud.firestore {
       // Users can read their own profile. Admins can read any profile.
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
-      // Admins can list all users if the query is scoped by schoolId.
-      allow list: if isAdmin(userProfile) && 'schoolId' in request.query.where;
+      // Admins can list users if the query is scoped by 'schoolId' AND 'role'.
+      allow list: if isAdmin(userProfile) && 'schoolId' in request.query.where && 'role' in request.query.where;
 
       // New users can create their own profile.
       allow create: if isOwner(userId);
