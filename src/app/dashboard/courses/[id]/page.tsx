@@ -27,7 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, documentId } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClipboardList, FileText, Megaphone } from 'lucide-react';
@@ -47,6 +47,10 @@ interface Student {
     email: string;
 }
 
+interface StudentCourse {
+    studentId: string;
+}
+
 function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: string }) {
     const firestore = useFirestore();
     const [students, setStudents] = React.useState<Student[]>([]);
@@ -58,27 +62,48 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
     React.useEffect(() => {
         const fetchStudents = async () => {
-            if (!courseId || !firestore || !course) return;
+            if (!courseId || !firestore || !schoolId) return;
             setIsLoadingStudents(true);
             setStudents([]);
 
             try {
-                const usersRef = collection(firestore, 'users');
-                const q = query(usersRef, where('role', '==', 'student'));
-                const allStudentsSnapshot = await getDocs(q);
+                // 1. Find all student-course links for the current course to get student IDs.
+                // This is a more complex operation to model with direct collectionGroup queries and rules,
+                // so we will query each user's subcollection. This is less efficient but works with current rules.
+                // A better long-term solution might involve a collection group query with more complex rules.
+                
+                // For this implementation, we will fetch all users of the school and then check their subcollections.
+                // Note: This assumes a teacher or admin has rights to list users in their school. Let's adjust rules if needed.
+                // A better approach: find the section, then find students in that section.
+                // The current data model does not directly link students to sections, but courses to sections.
+                
+                // Let's find the section for this course
+                if (!course?.sectionId) {
+                    setIsLoadingStudents(false);
+                    return;
+                }
 
-                const enrolledStudents: Student[] = [];
+                // Query for all `studentCourses` across all users that match the courseId.
+                const studentCoursesRef = collection(firestore, 'users');
+                const studentDocs = await getDocs(query(studentCoursesRef, where('schoolId', '==', schoolId), where('role', '==', 'student')));
+                const studentIds: string[] = [];
 
-                for (const studentDoc of allStudentsSnapshot.docs) {
-                    const studentCoursesRef = collection(firestore, `users/${studentDoc.id}/studentCourses`);
-                    const studentCoursesQuery = query(studentCoursesRef, where('courseId', '==', courseId));
-                    const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
-
-                    if (!studentCoursesSnapshot.empty) {
-                        enrolledStudents.push({ id: studentDoc.id, ...studentDoc.data() } as Student);
+                for (const studentDoc of studentDocs.docs) {
+                    const studentCourseLinkQuery = query(collection(firestore, 'users', studentDoc.id, 'studentCourses'), where('courseId', '==', courseId));
+                    const studentCourseLinkSnapshot = await getDocs(studentCourseLinkQuery);
+                    if (!studentCourseLinkSnapshot.empty) {
+                        studentIds.push(studentDoc.id);
                     }
                 }
-                setStudents(enrolledStudents);
+                
+                if (studentIds.length > 0) {
+                     // 2. Fetch the profiles for the identified students.
+                    const studentsQuery = query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
+                    const studentsSnapshot = await getDocs(studentsQuery);
+                    const enrolledStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+                    setStudents(enrolledStudents);
+                }
+
             } catch (error) {
                 console.error("Error fetching students for course:", error);
             } finally {
@@ -86,8 +111,10 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
             }
         };
 
-        fetchStudents();
-    }, [courseId, firestore, course]);
+        if (course) {
+            fetchStudents();
+        }
+    }, [courseId, firestore, course, schoolId]);
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
@@ -168,7 +195,7 @@ function PlaceholderTab({ title }: { title: string }) {
 
 
 export default function CourseDetailsPage({ params }: { params: { id: string } }) {
-    const { id: courseId } = params;
+    const courseId = params.id;
     const firestore = useFirestore();
     const { user } = useUser();
     

@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -103,8 +104,10 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // Allow admins to get any user, and users to get their own profile
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
+      // Allow admins to list users. Also allow teachers to list students in their school.
+      allow list: if isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher');
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
