@@ -86,42 +86,26 @@ export default function StudentsPage() {
   const schoolId = userData?.schoolId;
   const userRole = userData?.role;
   
-  const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('');
+  const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('all');
 
   // --- Data fetching ---
 
-  // For Admins: A simple query to get all students
-  const adminStudentsQuery = useMemoFirebase(() => {
-    if (userRole === 'admin') {
-      return query(
-        collection(firestore, 'users'),
-        where('role', '==', 'student')
-      );
+  const allStudentsInSchoolQuery = useMemoFirebase(() => {
+    if (schoolId) {
+        return query(
+            collection(firestore, 'users'),
+            where('schoolId', '==', schoolId),
+            where('role', '==', 'student')
+        );
     }
     return null;
-  }, [userRole, firestore]);
-  const { data: adminStudents, isLoading: isAdminStudentsLoading } = useCollection<UserData>(adminStudentsQuery);
-  
-  // For Teachers: A simple query based on selected section
-  const teacherStudentsQuery = useMemoFirebase(() => {
-      if (userRole === 'teacher' && schoolId && selectedSectionFilter) {
-          return query(
-              collection(firestore, 'users'),
-              where('schoolId', '==', schoolId),
-              where('role', '==', 'student'),
-              where('sectionId', '==', selectedSectionFilter)
-          );
-      }
-      return null;
-  }, [userRole, schoolId, selectedSectionFilter, firestore]);
-  const { data: teacherStudents, isLoading: isTeacherStudentsLoading } = useCollection<UserData>(teacherStudentsQuery);
+  }, [schoolId, firestore]);
+  const { data: allStudents, isLoading: isStudentsLoading } = useCollection<UserData>(allStudentsInSchoolQuery);
 
-  const students = userRole === 'admin' ? adminStudents : teacherStudents;
-  const isLoading = isAdminStudentsLoading || isTeacherStudentsLoading;
 
   const teacherCoursesQuery = useMemoFirebase(() => {
       if (userRole === 'teacher' && user && schoolId) {
-          return query(collection(firestore, 'schools', schoolId!), 'courses', where('teacherId', '==', user.uid));
+          return query(collection(firestore, `schools/${schoolId}/courses`), where('teacherId', '==', user.uid));
       }
       return null;
   }, [schoolId, userRole, user, firestore]);
@@ -168,6 +152,19 @@ export default function StudentsPage() {
     setSelectedSection(student.sectionId || '');
     setIsAssignDialogOpen(true);
   };
+  
+  const studentsToDisplay = React.useMemo(() => {
+    if (!allStudents) return [];
+    if (userRole === 'admin') {
+      return allStudents;
+    }
+    if (userRole === 'teacher') {
+      if (selectedSectionFilter === 'all') return [];
+      return allStudents.filter(student => student.sectionId === selectedSectionFilter);
+    }
+    return [];
+  }, [allStudents, userRole, selectedSectionFilter]);
+
 
   const handleAssignToSection = async () => {
     if (!selectedStudent || !selectedSection || !courses || !allSections) {
@@ -207,11 +204,18 @@ export default function StudentsPage() {
     });
 
     const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
+    const studentCoursesSnapshot = await getDocs(query(studentCoursesRef, where('studentId', '==', selectedStudent.id)));
+
+    // Prevent duplicate enrollments
+    const existingCourseIds = new Set(studentCoursesSnapshot.docs.map(d => d.data().courseId));
+
     for (const course of coursesInSection) {
-      await addDocumentNonBlocking(studentCoursesRef, {
-        studentId: selectedStudent.id,
-        courseId: course.id,
-      });
+      if (!existingCourseIds.has(course.id)) {
+        await addDocumentNonBlocking(studentCoursesRef, {
+          studentId: selectedStudent.id,
+          courseId: course.id,
+        });
+      }
     }
 
     toast({
@@ -234,6 +238,7 @@ export default function StudentsPage() {
                         <SelectValue placeholder="Selecciona una sección para ver estudiantes" />
                     </SelectTrigger>
                     <SelectContent>
+                        <SelectItem value="all">Todas mis secciones</SelectItem>
                         {teacherSections.map((section) => (
                             <SelectItem key={section.id} value={section.id}>
                                {gradesMap[section.gradeId] || 'Grado desconocido'} - {section.name}
@@ -265,15 +270,15 @@ export default function StudentsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading && (
+              {isStudentsLoading && (
                  <TableRow>
                   <TableCell colSpan={5} className="text-center">
                     Cargando estudiantes...
                   </TableCell>
                 </TableRow>
               )}
-              {!isLoading && students && students.length > 0 ? (
-                students.map((student) => (
+              {!isStudentsLoading && studentsToDisplay && studentsToDisplay.length > 0 ? (
+                studentsToDisplay.map((student) => (
                   <TableRow key={student.id}>
                     <TableCell className="font-medium">
                       {student.firstName} {student.lastName}
@@ -309,10 +314,10 @@ export default function StudentsPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              ) : !isLoading && (
+              ) : !isStudentsLoading && (
                  <TableRow>
                   <TableCell colSpan={5} className="text-center h-24">
-                   {userRole === 'teacher' ? "Por favor, selecciona una sección o no hay estudiantes en la sección seleccionada." : "No hay estudiantes registrados."}
+                   {userRole === 'teacher' ? "Por favor, selecciona una sección para ver a los estudiantes." : "No hay estudiantes registrados."}
                   </TableCell>
                 </TableRow>
               )}

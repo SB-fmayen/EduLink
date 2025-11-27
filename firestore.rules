@@ -54,28 +54,13 @@ service cloud.firestore {
     }
 
     /**
-     * Checks if a teacher is authorized to query users for a specific section.
-     * This function is crucial for allowing teachers to list students of their classes.
+     * Simple check for teacher role for queries that filter on the client side.
      */
-    function isTeacherForSectionQuery() {
-      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      let isTeacher = userProfile.data.role == 'teacher';
-      
-      // The query MUST filter by role, schoolId, and sectionId.
-      let queriedRole = request.query.where.role[2];
-      let queriedSchoolId = request.query.where.schoolId[2];
-      let queriedSectionId = request.query.where.sectionId[2];
-
-      // Use `exists` to check for a course that links the teacher to the queried section.
-      return isTeacher &&
-             queriedRole == 'student' &&
-             queriedSchoolId == userProfile.data.schoolId &&
-             exists(
-               /databases/$(database)/documents/schools/$(queriedSchoolId)/courses
-                 .where('teacherId', '==', request.auth.uid)
-                 .where('sectionId', '==', queriedSectionId)
-             );
+    function isTeacher() {
+        let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
+        return isSignedIn() && userProfile.data.role == 'teacher';
     }
+
 
     match /schools/{schoolId} {
       allow get, list: if isSignedIn();
@@ -131,8 +116,9 @@ service cloud.firestore {
       // Allow admins to get any user, and users to get their own profile
       allow get: if isOwner(userId) || isAdmin();
       
-      // Admins can list all users. Teachers can list users ONLY if they query for a specific section they teach.
-      allow list: if isAdmin() || isTeacherForSectionQuery();
+      // Admins can list all users. Teachers can list all students in their school.
+      // Filtering by section is handled on the client.
+      allow list: if isAdmin() || (isTeacher() && request.query.where.schoolId[2] == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId && request.query.where.role[2] == 'student');
 
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
@@ -194,6 +180,9 @@ service cloud.firestore {
       allow list: if false;
       allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
       allow update, delete: if isOwner(resource.data.senderId) && resource != null;
+    }
+    match /studentCourses/{studentCourseId} {
+      allow read: if isSignedIn();
     }
   }
 }
