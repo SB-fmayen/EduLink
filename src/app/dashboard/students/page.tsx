@@ -212,9 +212,9 @@ export default function StudentsPage() {
       gradeId: sectionData.gradeId,
     });
     
-    // Create new student reference in the school's student list if not there
+    // Create new student reference in the school's student list
     const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, selectedStudent.id);
-    batch.set(schoolStudentRef, { studentId: selectedStudent.id }, { merge: true });
+    batch.set(schoolStudentRef, { id: selectedStudent.id }, { merge: true });
     
     // If moving from another section, find old enrollments and remove them
     if (oldSectionId && oldSectionId !== selectedSection) {

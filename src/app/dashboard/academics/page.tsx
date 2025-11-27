@@ -536,7 +536,6 @@ function SectionsManager() {
     // Get teacher IDs from the new subcollection
     const schoolTeachersRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/teachers`) : null, [schoolId, firestore]);
     const { data: teacherRefs } = useCollection<{id: string}>(schoolTeachersRef);
-    
     const teacherIds = React.useMemo(() => teacherRefs?.map(t => t.id) || [], [teacherRefs]);
     
     // Get teacher profiles from the main users collection
@@ -822,7 +821,7 @@ function SectionsManager() {
                                     <FormField control={courseAssignmentForm.control} name="subjectId" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Asignatura</FormLabel>
-                                            <Select onValuechange={field.onChange} value={field.value}>
+                                            <Select onValueChange={field.onChange} value={field.value}>
                                                 <FormControl><SelectTrigger><SelectValue placeholder="Selecciona asignatura" /></SelectTrigger></FormControl>
                                                 <SelectContent>
                                                     {subjects?.map((subject) => <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>)}

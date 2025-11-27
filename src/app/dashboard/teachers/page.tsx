@@ -139,17 +139,16 @@ export default function TeachersPage() {
     // 1. Update the main user document
     batch.update(teacherDocRef, values);
 
-    // 2. If school has changed, update the role-based subcollections
-    if (oldSchoolId !== newSchoolId) {
-        // Remove from old school's teachers subcollection
-        if (oldSchoolId) {
-            const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
-            batch.delete(oldTeacherRef);
-        }
-        // Add to new school's teachers subcollection
-        const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
-        batch.set(newTeacherRef, { teacherId: selectedTeacher.id });
+    // 2. If school has changed, remove from old school's teachers subcollection
+    if (oldSchoolId && oldSchoolId !== newSchoolId) {
+        const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
+        batch.delete(oldTeacherRef);
     }
+    
+    // 3. ALWAYS set the teacher in the new school's subcollection
+    // This ensures creation even if the school wasn't changed but the doc didn't exist
+    const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
+    batch.set(newTeacherRef, { id: selectedTeacher.id }, { merge: true });
 
     try {
         await batch.commit();
