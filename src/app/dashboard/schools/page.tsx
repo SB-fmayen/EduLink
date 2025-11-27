@@ -29,7 +29,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
     AlertDialog,
@@ -40,15 +39,12 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, deleteDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Badge } from '@/components/ui/badge';
+import { collection, doc, serverTimestamp, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -60,7 +56,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { addDocumentNonBlocking, deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import React from 'react';
 import { toast } from '@/hooks/use-toast';
 
@@ -68,6 +64,7 @@ interface SchoolData {
   id: string;
   name: string;
   address: string;
+  status: 'active' | 'inactive';
   createdAt: {
     toDate: () => Date;
   };
@@ -81,17 +78,18 @@ const formSchema = z.object({
 export default function SchoolsPage() {
   const firestore = useFirestore();
   const schoolsRef = useMemoFirebase(() => collection(firestore, 'schools'), [firestore]);
-  const { data: schools, isLoading } = useCollection<SchoolData>(schoolsRef);
+  const activeSchoolsQuery = useMemoFirebase(() => query(schoolsRef, where('status', '==', 'active')), [schoolsRef]);
+  const { data: schools, isLoading } = useCollection<SchoolData>(activeSchoolsQuery);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [editingSchool, setEditingSchool] = React.useState<SchoolData | null>(null);
+  const [schoolToDeactivate, setSchoolToDeactivate] = React.useState<SchoolData | null>(null);
+  const [isAlertOpen, setIsAlertOpen] = React.useState(false);
+  const [alertContent, setAlertContent] = React.useState({ title: '', description: '' });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: '',
-      address: '',
-    },
+    defaultValues: { name: '', address: '' },
   });
 
   React.useEffect(() => {
@@ -101,10 +99,7 @@ export default function SchoolsPage() {
         address: editingSchool.address,
       });
     } else {
-      form.reset({
-        name: '',
-        address: '',
-      });
+      form.reset({ name: '', address: '' });
     }
   }, [editingSchool, form]);
 
@@ -118,31 +113,47 @@ export default function SchoolsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (schoolId: string) => {
-    const schoolDocRef = doc(firestore, 'schools', schoolId);
-    deleteDocumentNonBlocking(schoolDocRef);
+  const handleDeleteAttempt = async (school: SchoolData) => {
+    const usersRef = collection(firestore, 'users');
+    const q = query(usersRef, where('schoolId', '==', school.id), where('status', '==', 'active'));
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+      setAlertContent({
+        title: 'No se puede desactivar la escuela',
+        description: `Esta escuela tiene ${snapshot.size} usuario(s) activo(s) y no puede ser desactivada.`,
+      });
+      setIsAlertOpen(true);
+    } else {
+      setSchoolToDeactivate(school);
+    }
+  };
+
+  const executeDeactivate = () => {
+    if (!schoolToDeactivate) return;
+    const schoolDocRef = doc(firestore, 'schools', schoolToDeactivate.id);
+    updateDocumentNonBlocking(schoolDocRef, { status: 'inactive', deletedAt: serverTimestamp() });
     toast({
-        title: "Escuela Eliminada",
-        description: "La escuela ha sido eliminada correctamente."
-    })
+        title: "Escuela Desactivada",
+        description: "La escuela ha sido movida a la papelera de reciclaje."
+    });
+    setSchoolToDeactivate(null);
   };
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     if (editingSchool) {
-      // Update existing school
       const schoolDocRef = doc(firestore, 'schools', editingSchool.id);
       updateDocumentNonBlocking(schoolDocRef, values);
        toast({
         title: "Escuela Actualizada",
         description: "La información de la escuela ha sido actualizada."
-      })
+      });
     } else {
-      // Create new school
-      addDocumentNonBlocking(schoolsRef, { ...values, createdAt: serverTimestamp() });
+      addDocumentNonBlocking(schoolsRef, { ...values, status: 'active', createdAt: serverTimestamp() });
        toast({
         title: "Escuela Creada",
         description: "La nueva escuela ha sido creada correctamente."
-      })
+      });
     }
     setIsDialogOpen(false);
     setEditingSchool(null);
@@ -161,7 +172,7 @@ export default function SchoolsPage() {
         <CardHeader>
           <CardTitle>Gestión de Escuelas</CardTitle>
           <CardDescription>
-            Una lista de todas las escuelas registradas en el sistema.
+            Una lista de todas las escuelas activas en el sistema.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -203,25 +214,9 @@ export default function SchoolsPage() {
                           <DropdownMenuItem onClick={() => handleEditClick(school)}>
                             Editar
                           </DropdownMenuItem>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                    Eliminar
-                                </DropdownMenuItem>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    Esta acción no se puede deshacer. Esto eliminará permanentemente la escuela y todos sus datos asociados.
-                                </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(school.id)}>Continuar</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteAttempt(school); }}>
+                            Eliminar
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -230,7 +225,7 @@ export default function SchoolsPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center">
-                    No hay escuelas registradas.
+                    No hay escuelas activas.
                   </TableCell>
                 </TableRow>
               )}
@@ -282,6 +277,31 @@ export default function SchoolsPage() {
           </Form>
         </DialogContent>
       </Dialog>
+      
+      <AlertDialog open={schoolToDeactivate !== null} onOpenChange={(open) => !open && setSchoolToDeactivate(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>¿Desactivar Escuela?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción moverá la escuela a la papelera de reciclaje. Podrás restaurarla más tarde.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDeactivate}>Continuar</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>{alertContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>{alertContent.description}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setIsAlertOpen(false)}>Entendido</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

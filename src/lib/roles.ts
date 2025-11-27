@@ -63,6 +63,12 @@ export const menuItems: NavItem[] = [
     roles: ['admin', 'teacher', 'student', 'parent'],
   },
   {
+    href: '/dashboard/recycle-bin',
+    label: 'Papelera',
+    icon: 'Trash2',
+    roles: ['admin'],
+  },
+  {
     href: '/dashboard/settings',
     label: 'Configuración',
     icon: 'Settings',

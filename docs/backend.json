@@ -17,11 +17,21 @@
         "address": {
           "type": "string",
           "description": "Address of the school."
+        },
+        "status": {
+          "type": "string",
+          "description": "Status of the school, e.g., 'active' or 'inactive'."
+        },
+        "deletedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the school was soft-deleted."
         }
       },
       "required": [
         "id",
-        "name"
+        "name",
+        "status"
       ]
     },
     "User": {
