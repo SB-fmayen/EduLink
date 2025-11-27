@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -33,10 +34,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
-import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { toast } from '@/hooks/use-toast';
 import {
   Select,
@@ -91,14 +91,12 @@ export default function StudentsPage() {
   // --- Data fetching ---
 
   const allStudentsInSchoolQuery = useMemoFirebase(() => {
-    if (schoolId) {
-        return query(
-            collection(firestore, 'users'),
-            where('schoolId', '==', schoolId),
-            where('role', '==', 'student')
-        );
-    }
-    return null;
+    if (!schoolId) return null;
+    return query(
+        collection(firestore, 'users'),
+        where('schoolId', '==', schoolId),
+        where('role', '==', 'student')
+    );
   }, [schoolId, firestore]);
   const { data: allStudents, isLoading: isStudentsLoading } = useCollection<UserData>(allStudentsInSchoolQuery);
 
@@ -158,8 +156,9 @@ export default function StudentsPage() {
     if (userRole === 'admin') {
       return allStudents;
     }
+    // For teachers, filter students based on the selected section
     if (userRole === 'teacher') {
-      if (selectedSectionFilter === 'all') return [];
+      if (!selectedSectionFilter || selectedSectionFilter === 'all') return allStudents;
       return allStudents.filter(student => student.sectionId === selectedSectionFilter);
     }
     return [];
@@ -167,7 +166,7 @@ export default function StudentsPage() {
 
 
   const handleAssignToSection = async () => {
-    if (!selectedStudent || !selectedSection || !courses || !allSections) {
+    if (!selectedStudent || !selectedSection || !courses || !allSections || !schoolId) {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -198,30 +197,36 @@ export default function StudentsPage() {
     }
 
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
-    updateDocumentNonBlocking(studentDocRef, {
+    
+    const batch = writeBatch(firestore);
+
+    // Update the student's section and grade
+    batch.update(studentDocRef, {
       sectionId: sectionData.id,
       gradeId: sectionData.gradeId,
     });
 
-    const studentCoursesRef = collection(firestore, 'users', selectedStudent.id, 'studentCourses');
-    const studentCoursesSnapshot = await getDocs(query(studentCoursesRef, where('studentId', '==', selectedStudent.id)));
-
-    // Prevent duplicate enrollments
-    const existingCourseIds = new Set(studentCoursesSnapshot.docs.map(d => d.data().courseId));
-
+    // Enroll the student in all courses for that section
     for (const course of coursesInSection) {
-      if (!existingCourseIds.has(course.id)) {
-        await addDocumentNonBlocking(studentCoursesRef, {
-          studentId: selectedStudent.id,
-          courseId: course.id,
-        });
-      }
+        const enrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
+        batch.set(enrollmentRef, { studentId: selectedStudent.id });
     }
 
-    toast({
-      title: 'Estudiante Asignado',
-      description: `${selectedStudent.firstName} ha sido inscrito en los cursos y actualizado.`,
-    });
+    try {
+        await batch.commit();
+        toast({
+          title: 'Estudiante Asignado',
+          description: `${selectedStudent.firstName} ha sido inscrito en los cursos y actualizado.`,
+        });
+    } catch (error) {
+        console.error("Error assigning student to section: ", error);
+        toast({
+            variant: "destructive",
+            title: "Error de Asignación",
+            description: "No se pudo completar la inscripción del estudiante."
+        })
+    }
+    
     setIsAssignDialogOpen(false);
     setSelectedSection('');
     setSelectedStudent(null);
@@ -238,7 +243,7 @@ export default function StudentsPage() {
                         <SelectValue placeholder="Selecciona una sección para ver estudiantes" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todas mis secciones</SelectItem>
+                        <SelectItem value="all">Todos mis Estudiantes</SelectItem>
                         {teacherSections.map((section) => (
                             <SelectItem key={section.id} value={section.id}>
                                {gradesMap[section.gradeId] || 'Grado desconocido'} - {section.name}

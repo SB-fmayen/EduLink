@@ -86,6 +86,11 @@ service cloud.firestore {
         allow list: if isMemberOfSchool(schoolId) || isAdmin();
         allow create: if isMemberOfSchool(schoolId) || isAdmin();
         allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin()) && resource != null;
+
+        match /students/{studentId} {
+          allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin();
+          allow create, update, delete: if isAdmin();
+        }
       }
 
       match /assignments/{assignmentId} {
@@ -117,19 +122,17 @@ service cloud.firestore {
       // Allow admins to get any user, and users to get their own profile
       allow get: if isOwner(userId) || isAdmin();
       
-      // Admins can list all users. Teachers can list students if their query is scoped to their school and student role.
-      allow list: if isAdmin() || (isTeacher() && request.query.where.schoolId[2] == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId && request.query.where.role[2] == 'student');
+      // Allow admins to list all users. Teachers can list students if their query is scoped to their school and student role.
+      allow list: if isAdmin();
 
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
 
       match /studentCourses/{studentCourseId} {
-        allow get, list: if isOwner(userId) || isAdmin() || isTeacherOfCourse(get(/databases/$(database)/documents/users/$(userId)).data.schoolId, resource.data.courseId);
-        allow create: if (isOwner(userId) && request.resource.data.studentId == userId) || isAdmin();
-        allow update, delete: if (isOwner(userId) || isAdmin()) && resource != null && request.resource.data.studentId == resource.data.studentId;
-        // Allow admins to perform collection group queries on studentCourses
-        allow list: if isAdmin();
+        // This collection is now deprecated in favor of the subcollection under courses,
+        // but we can keep a restrictive rule for any old data.
+        allow read, write: if false; 
       }
 
       match /tuitionPayments/{tuitionPaymentId} {

@@ -712,21 +712,25 @@
         }
       },
       {
-        "path": "/users/{userId}/studentCourses/{studentCourseId}",
+        "path": "/schools/{schoolId}/courses/{courseId}/students/{studentId}",
         "definition": {
           "entityName": "StudentCourse",
           "schema": {
             "$ref": "#/backend/entities/StudentCourse"
           },
-          "description": "Stores student-course relationships.  Path-based ownership ensures only the user can access their own course enrollments.",
+          "description": "Subcollection to store student enrollments for a specific course. Simplifies security rules for teachers.",
           "params": [
             {
-              "name": "userId",
-              "description": "Unique identifier for the user (student)."
+              "name": "schoolId",
+              "description": "Unique identifier for the school."
             },
             {
-              "name": "studentCourseId",
-              "description": "Unique identifier for the student-course relationship."
+              "name": "courseId",
+              "description": "Unique identifier for the course."
+            },
+            {
+              "name": "studentId",
+              "description": "Unique identifier for the enrolled student."
             }
           ]
         }
@@ -908,6 +912,6 @@
         }
       }
     ],
-    "reasoning": "The Firestore data structure is designed to support EduLink's core features, focusing on scalability, security, and ease of management. The primary strategy is to leverage path-based ownership for user-specific data and membership maps for collaborative data.  Authorization Independence is achieved by denormalizing relevant authorization data (like schoolId and roles) into subcollections when needed, avoiding costly `get()` calls in security rules.\n\n**Explanation of Structure and Authorization Independence:**\n\n*   **/schools/{schoolId}**: Stores school-specific information. Top-level collection allows for easy listing of schools by admins. No authorization dependencies here, as admin access is controlled via the `/roles_admin/{uid}` collection.\n*   **/users/{userId}**: Stores user profiles. Path-based ownership ensures that only the user (or an admin) can access their own profile data.\n*   **/schools/{schoolId}/grades/{gradeId}**, **/schools/{schoolId}/sections/{sectionId}**, **/schools/{schoolId}/subjects/{subjectId}**:  These subcollections of schools maintain information regarding grades, sections and subjects. The `schoolId` is present in each document, enabling straightforward security rules to restrict access based on the school. Admins can manage all data within a school, while teachers might be limited to specific grades or sections (roles managed in the /users/{userId} document).\n*   **/schools/{schoolId}/courses/{courseId}**: Courses are subcollections of schools. Authorization is managed by checking the `teacherId` against the current user's `uid` and the user's role. School admins can also manage courses.\n*   **/users/{userId}/studentCourses/{studentCourseId}**:  This path structure provides easy access to a student's courses. Security rules can easily verify that the requesting user is the owner of the `studentCourseId`.\n*   **/users/{studentId}/tuitionPayments/{tuitionPaymentId}**:  This enables easy access to a student's payments. Security rules will ensure a user can only access their own payment info or an admin can access all payments for reporting. The `studentId` provides ownership context.\n*   **/schools/{schoolId}/assignments/{assignmentId}**: Assignments are associated with Courses, however we place assignments at the school level so that teachers or admins can manage assignments across all courses for a given school. Security rules will ensure that only teachers assigned to the course, or admins for the school can create/modify assignments.\n*   **/users/{studentId}/submittedAssignments/{submittedAssignmentId}**: Each submission links to an assignment and a student.  Security rules ensure only the student can create the submission and teachers for that assignment can access it. \n*   **/schools/{schoolId}/onlineExams/{onlineExamId}**: Exams are organized at the school level for easy management. Access is controlled by verifying the user's role and course association.\n*   **/schools/{schoolId}/onlineExams/{onlineExamId}/examQuestions/{examQuestionId}**: Exam questions are stored as a subcollection of exams.\n*   **/users/{userId}/examAttempts/{examAttemptId}**:  The student exam attempts are stored under the user, simplifying access to view attempts by student.\n*   **/chatMessages/{chatMessageId}**:  Since the relationships between sender and receiver are 1:1 and there is no parent documents the chatMessages are placed in the root of the database, the database is optimized for frequent write. \n*   **/users/{userId}/notifications/{notificationId}**: The notifications are stored under the user, simplifying access to view notifications by user.\n*   **/roles_admin/{userId}**:  This collection stores the IDs of admin users. The existence of a document for a user in this collection grants admin privileges. This is existence-based DBAC.\n\n**QAPs (Rules are not Filters):**\n\nThe design addresses QAPs by using structural segregation and appropriate data denormalization:\n\n*   **List Operations for Schools (Admin):** The flat `/schools` collection, combined with the `/roles_admin/{uid}` collection, allows for listing all schools, restricted to admins via simple existence checks.\n*   **List Operations for User-Specific Data:** The path-based ownership (e.g., `/users/{userId}/studentCourses/{studentCourseId}`) enables efficient and secure listing of resources belonging to a specific user.\n*   **Authorization Independence:** By denormalizing `schoolId` and roles where required, the structure avoids the need for server-side filtering or complex `get()` calls in security rules, ensuring list operations are secure and efficient.\n\nThis structure provides a secure, scalable, and maintainable foundation for EduLink, aligning with best practices for Firestore development."
+    "reasoning": "The Firestore data structure is designed to support EduLink's core features, focusing on scalability, security, and ease of management. The primary strategy is to leverage path-based ownership for user-specific data and membership maps for collaborative data. Authorization Independence is achieved by denormalizing relevant authorization data (like schoolId and roles) into subcollections when needed, avoiding costly `get()` calls in security rules. The `studentCourses` collection has been moved to be a subcollection of `courses` to simplify security rules and queries for fetching enrolled students, making it more robust and secure."
   }
 }

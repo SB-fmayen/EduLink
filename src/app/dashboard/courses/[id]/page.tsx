@@ -27,7 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, documentId, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, documentId } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClipboardList, FileText, Megaphone } from 'lucide-react';
@@ -48,63 +48,29 @@ interface Student {
     email: string;
 }
 
-interface StudentCourseLink {
-    studentId: string;
-    courseId: string;
+interface EnrolledStudent {
+    id: string; // This will be the studentId
 }
 
 function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: string }) {
     const firestore = useFirestore();
-    const [students, setStudents] = React.useState<Student[]>([]);
-    const [isLoadingStudents, setIsLoadingStudents] = React.useState(true);
     
     const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
     const { data: course, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
+    
+    // 1. Get the list of enrolled student IDs from the subcollection
+    const enrolledStudentsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses/${courseId}/students`) : null, [firestore, schoolId, courseId]);
+    const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<EnrolledStudent>(enrolledStudentsRef);
 
+    // 2. Fetch the profiles of the enrolled students
+    const studentProfilesQuery = useMemoFirebase(() => {
+        if (!enrolledStudents || enrolledStudents.length === 0) return null;
+        const studentIds = enrolledStudents.map(s => s.id);
+        return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds));
+    }, [firestore, enrolledStudents]);
+    const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
 
-    React.useEffect(() => {
-        const fetchStudents = async () => {
-            if (!firestore || !courseId) return;
-
-            setIsLoadingStudents(true);
-            try {
-                // 1. Find all studentCourse documents that match the current courseId
-                const studentCoursesQuery = query(
-                    collectionGroup(firestore, 'studentCourses'),
-                    where('courseId', '==', courseId)
-                );
-                const studentCoursesSnapshot = await getDocs(studentCoursesQuery);
-                
-                if (studentCoursesSnapshot.empty) {
-                    setStudents([]);
-                    setIsLoadingStudents(false);
-                    return;
-                }
-
-                const studentIds = studentCoursesSnapshot.docs.map(doc => doc.data().studentId);
-
-                // 2. If we found students, fetch their user profiles
-                if (studentIds.length > 0) {
-                    const studentsQuery = query(
-                        collection(firestore, 'users'),
-                        where(documentId(), 'in', studentIds)
-                    );
-                    const studentsSnapshot = await getDocs(studentsQuery);
-                    const studentsData = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-                    setStudents(studentsData);
-                } else {
-                    setStudents([]);
-                }
-            } catch (error) {
-                console.error("Error fetching students:", error);
-                setStudents([]);
-            } finally {
-                setIsLoadingStudents(false);
-            }
-        };
-
-        fetchStudents();
-    }, [courseId, firestore]);
+    const isLoading = isLoadingCourse || isLoadingEnrolled || isLoadingProfiles;
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
@@ -129,7 +95,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {isLoadingStudents ? (
+                        {isLoading ? (
                              Array.from({ length: 3 }).map((_, index) => (
                                 <TableRow key={index}>
                                     <TableCell><Skeleton className="h-6 w-full" /></TableCell>
@@ -138,7 +104,7 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
                                     <TableCell><Skeleton className="h-6 w-full" /></TableCell>
                                 </TableRow>
                              ))
-                        ) : students.length > 0 ? (
+                        ) : students && students.length > 0 ? (
                             students.map(student => (
                                 <TableRow key={student.id}>
                                     <TableCell className="font-medium">{student.firstName} {student.lastName}</TableCell>
