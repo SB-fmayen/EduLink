@@ -97,7 +97,7 @@ service cloud.firestore {
 
       match /courses/{courseId} {
         allow get: if isMemberOfSchool(userProfile, schoolId);
-        allow list: if isMemberOfSchool(userProfile, schoolId) || isAdmin(userProfile);
+        allow list: if isMemberOfSchool(userProfile, schoolId);
         allow create: if isAdmin(userProfile);
         allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile));
 
@@ -149,11 +149,11 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin(userProfile);
       
       // Admins can list all users of a certain role
-      allow list: if isAdmin(userProfile) && request.query.where.role is string ||
-                   (request.query.keys.hasAny(['id'])); // For fetching specific profiles by ID
+      allow list: if isAdmin(userProfile) && 'role' in request.query.where && 'schoolId' in request.query.where;
+                   
 
-      // New users can create their own profile.
-      allow create: if isOwner(userId);
+      // New users can be created by Admins
+      allow create: if isAdmin(userProfile);
       // Users can update their own profile, admins can update any.
       allow update: if isOwner(userId) || isAdmin(userProfile);
       // Only admins or the user themselves can delete a profile.
