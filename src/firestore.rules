@@ -71,12 +71,13 @@ service cloud.firestore {
       match /teachers/{teacherId} {
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
         allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
-        allow write: if isAdmin(userProfile); 
+        allow delete: if isAdmin(userProfile); 
       }
 
       match /students/{studentId} {
         allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create, write: if isAdmin(userProfile);
+        allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
+        allow delete: if isAdmin(userProfile);
       }
 
       match /grades/{gradeId} {
@@ -141,8 +142,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // A new user can create their own profile document.
-      allow create: if isOwner(userId);
+      // A new user can only create their own profile document.
+      allow create: if request.auth.uid == userId;
       
       let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
 

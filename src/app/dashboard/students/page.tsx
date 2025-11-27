@@ -34,7 +34,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc, getFirestore } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { toast } from '@/hooks/use-toast';
@@ -55,6 +55,7 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } f
 import { initializeApp, deleteApp, getApp, FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
+import { getFirestore } from 'firebase/firestore';
 
 interface UserData {
   id: string;
@@ -147,8 +148,8 @@ export default function StudentsPage() {
     defaultValues: { firstName: '', lastName: '', email: '', password: '' },
   });
 
-  const teacherStudentIds = useMemoFirebase(async () => {
-    if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0) return [];
+  const teacherStudentIdsQuery = useMemoFirebase(async () => {
+    if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0) return null;
     
     const studentIds = new Set<string>();
     for (const course of teacherCourses) {
@@ -156,15 +157,15 @@ export default function StudentsPage() {
         const snapshot = await getDocs(enrollmentsRef);
         snapshot.forEach(doc => studentIds.add(doc.data().studentId));
     }
-    return Array.from(studentIds);
+    return studentIds.size > 0 ? Array.from(studentIds) : [];
   }, [userRole, teacherCourses, firestore, schoolId]);
+
+  const { data: teacherStudentIds, isLoading: isLoadingTeacherStudentIds } = useDoc<string[]>(teacherStudentIdsQuery as any);
 
   const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(
     useMemoFirebase(() => {
-        if (teacherStudentIds && teacherStudentIds.length > 0) {
-            return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds));
-        }
-        return null;
+        if (!teacherStudentIds || teacherStudentIds.length === 0) return null;
+        return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds));
     }, [teacherStudentIds, firestore])
   );
 
@@ -180,7 +181,7 @@ export default function StudentsPage() {
     return [];
   }, [allStudents, teacherStudents, userRole, selectedSectionFilter]);
   
-  const isLoading = isProfilesLoading || isLoadingTeacherStudents;
+  const isLoading = isProfilesLoading || isLoadingTeacherStudentIds || isLoadingTeacherStudents;
 
   const handleAssignClick = (student: UserData) => {
     setSelectedStudent(student);
@@ -196,21 +197,32 @@ export default function StudentsPage() {
     
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
     let secondaryApp;
+    
     try {
+      // Admin (using primary firestore instance) creates the school-specific reference document first
+      const newStudentRef = doc(collection(firestore, 'users')); // Create a ref to get a new ID
+      const newUserId = newStudentRef.id;
+
+      const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newUserId);
+      await setDoc(schoolStudentRef, { id: newUserId });
+
+      // Now create the user and their profile using the secondary app
       secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
       const secondaryAuth = getAuth(secondaryApp);
       const secondaryFirestore = getFirestore(secondaryApp);
 
-      // 1. Create the user in Authentication
+      // Create user in Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-      const newUser = userCredential.user;
 
-      // 2. Sign in the new user TEMPORARILY in the secondary app to get permissions
+      // This is a workaround because userCredential.user.uid is not always the same as the one we need to use if we create the user with a specific ID
+      // So we have to write the profile with the ID we generated
+      
+      // Sign in the new user TEMPORARILY in the secondary app to get permissions
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
-
-      // 3. Prepare user data and write to Firestore (as the new user)
+      
+      // New user writes their own profile to the main /users collection
       const userPayload: UserData = {
-        id: newUser.uid,
+        id: userCredential.user.uid, // Use the actual UID from Auth
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
@@ -218,12 +230,12 @@ export default function StudentsPage() {
         schoolId: schoolId,
       };
       
-      const userDocRef = doc(secondaryFirestore, 'users', newUser.uid);
+      const userDocRef = doc(secondaryFirestore, 'users', userCredential.user.uid);
       await setDoc(userDocRef, userPayload);
       
       toast({ 
         title: 'Estudiante Creado', 
-        description: 'La cuenta ha sido creada y guardada en Firestore.' 
+        description: 'La cuenta ha sido creada y guardada correctamente.' 
       });
       setIsNewStudentDialogOpen(false);
       newStudentForm.reset();
@@ -236,7 +248,6 @@ export default function StudentsPage() {
         toast({ variant: 'destructive', title: 'Error al crear estudiante', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
-        // 4. Clean up: Sign out from the secondary app and delete it.
         if (secondaryApp) {
             const secondaryAuth = getAuth(secondaryApp);
             if (secondaryAuth.currentUser) {
@@ -395,7 +406,7 @@ export default function StudentsPage() {
                   <div className="relative">
                     <FormControl><Input type={showPassword ? 'text' : 'password'} {...field} /></FormControl>
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3">
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4 />}
                     </button>
                   </div>
                   <FormMessage />

@@ -34,7 +34,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId, writeBatch, setDoc, getFirestore } from 'firebase/firestore';
+import { collection, query, where, doc, writeBatch, setDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { useRouter } from 'next/navigation';
@@ -46,8 +46,9 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp, getApp, FirebaseOptions } from "firebase/app";
+import { initializeApp, deleteApp, FirebaseOptions } from "firebase/app";
 import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import { firebaseConfig } from '@/firebase/config';
 
 interface UserData {
@@ -166,14 +167,12 @@ export default function TeachersPage() {
     const batch = writeBatch(firestore);
     batch.update(teacherDocRef, values);
 
-    // This part handles the reference document in the schools subcollection
     if (oldSchoolId && oldSchoolId !== newSchoolId) {
         const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
         batch.delete(oldTeacherRef);
     }
     
     const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
-    // Use set with merge to create or update the reference document
     batch.set(newTeacherRef, { id: selectedTeacher.id }, { merge: true });
 
     try {
@@ -207,13 +206,14 @@ export default function TeachersPage() {
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
-      // 2. Sign in the new user in the secondary app to gain write permission
+      // 2. Admin (using primary firestore instance) creates the school-specific reference document
+      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
+      await setDoc(schoolTeacherRef, { id: newUser.uid });
+
+      // 3. Sign in the new user in the secondary app to gain write permission
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
 
-      // 3. Prepare data and write to Firestore as the new user
-      const batch = writeBatch(secondaryFirestore);
-
-      // 3a. Create the main user profile document
+      // 4. New user writes their own profile to the main /users collection
       const userPayload: UserData = {
         id: newUser.uid,
         firstName: values.firstName,
@@ -223,17 +223,11 @@ export default function TeachersPage() {
         schoolId: adminSchoolId,
       };
       const userDocRef = doc(secondaryFirestore, 'users', newUser.uid);
-      batch.set(userDocRef, userPayload);
-      
-      // 3b. Create the reference document in the school's subcollection
-      const schoolTeacherRef = doc(secondaryFirestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
-      batch.set(schoolTeacherRef, { id: newUser.uid });
-
-      await batch.commit();
+      await setDoc(userDocRef, userPayload);
       
       toast({ 
           title: 'Profesor Creado', 
-          description: 'La cuenta ha sido creada y guardada en Firestore.' 
+          description: 'La cuenta ha sido creada y guardada correctamente.' 
       });
       setIsNewTeacherDialogOpen(false);
       newTeacherForm.reset();
@@ -246,7 +240,7 @@ export default function TeachersPage() {
         toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
-        // 4. Clean up
+        // 5. Clean up
         if (secondaryApp) {
             const secondaryAuth = getAuth(secondaryApp);
             if (secondaryAuth.currentUser) {
