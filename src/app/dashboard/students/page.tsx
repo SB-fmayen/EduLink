@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -54,8 +53,8 @@ import { Input } from '@/components/ui/input';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { initializeApp, deleteApp, getApp, FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { firebaseConfig } from '@/firebase/config';
 import { getFirestore } from 'firebase/firestore';
+import { firebaseConfig } from '@/firebase/config';
 
 interface UserData {
   id: string;
@@ -165,6 +164,8 @@ export default function StudentsPage() {
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       
       const newStudentId = userCredential.user.uid;
+      
+      // Admin writes the reference document
       const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
       await setDoc(schoolStudentRef, { id: newStudentId });
 
