@@ -300,8 +300,6 @@ export default function StudentsPage() {
     if (teacherStudentIds === null || teacherStudentIds.length === 0) {
       return null;
     }
-    // Firestore 'in' query is limited to 30 items. We need to handle this.
-    // For now, let's just slice, but a real-world app would need pagination or multiple queries.
     return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds.slice(0, 30)));
   }, [teacherStudentIds, firestore]);
   const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(teacherStudentsQuery);
@@ -321,66 +319,68 @@ export default function StudentsPage() {
   const isLoading = isProfilesLoading || isLoadingTeacherStudentIds || isLoadingTeacherStudents;
   
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Gestión de Estudiantes</h1>
-        {userRole === 'admin' && (
-          <Button onClick={() => setIsNewStudentDialogOpen(true)}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Crear Estudiante
-          </Button>
-        )}
-        {userRole === 'teacher' && (
-             <div className="w-1/3">
-                 <Select onValueChange={setSelectedSectionFilter} value={selectedSectionFilter}>
-                    <SelectTrigger><SelectValue placeholder="Filtrar por sección..." /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Todos mis Estudiantes</SelectItem>
-                        {teacherSections.map((section) => (
-                            <SelectItem key={section.id} value={section.id}>
-                               {gradesMap[section.gradeId] || 'Grado'} - {section.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-        )}
+    <>
+      <div className="flex flex-col gap-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold tracking-tight">Gestión de Estudiantes</h1>
+          {userRole === 'admin' && (
+            <Button onClick={() => setIsNewStudentDialogOpen(true)}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Crear Estudiante
+            </Button>
+          )}
+          {userRole === 'teacher' && (
+              <div className="w-1/3">
+                  <Select onValueChange={setSelectedSectionFilter} value={selectedSectionFilter}>
+                      <SelectTrigger><SelectValue placeholder="Filtrar por sección..." /></SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="all">Todos mis Estudiantes</SelectItem>
+                          {teacherSections.map((section) => (
+                              <SelectItem key={section.id} value={section.id}>
+                                {gradesMap[section.gradeId] || 'Grado'} - {section.name}
+                              </SelectItem>
+                          ))}
+                      </SelectContent>
+                  </Select>
+              </div>
+          )}
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Listado de Estudiantes</CardTitle>
+            <CardDescription>Consulta, administra y asigna estudiantes a sus secciones.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Email</TableHead><TableHead>Sección Asignada</TableHead><TableHead>Rol</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+              <TableBody>
+                {isLoading && ( <TableRow><TableCell colSpan={5} className="text-center">Cargando estudiantes...</TableCell></TableRow> )}
+                {!isLoading && studentsToDisplay && studentsToDisplay.length > 0 ? (
+                  studentsToDisplay.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-medium">{student.firstName} {student.lastName}</TableCell>
+                      <TableCell>{student.email}</TableCell>
+                      <TableCell>
+                        {student.sectionId && sectionsMap[student.sectionId] ? ( `${gradesMap[sectionsMap[student.sectionId].gradeId] || ''} - ${sectionsMap[student.sectionId].name}` ) : ( <span className="text-muted-foreground">No asignado</span> )}
+                      </TableCell>
+                      <TableCell><Badge variant="secondary">{student.role}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {userRole === 'admin' && <DropdownMenuItem onClick={() => handleAssignClick(student)}>Asignar a Sección</DropdownMenuItem>}
+                            <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : !isLoading && ( <TableRow><TableCell colSpan={5} className="text-center h-24">{userRole === 'teacher' ? "Selecciona una sección para ver a los estudiantes." : "No hay estudiantes registrados."}</TableCell></TableRow> )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Listado de Estudiantes</CardTitle>
-          <CardDescription>Consulta, administra y asigna estudiantes a sus secciones.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Email</TableHead><TableHead>Sección Asignada</TableHead><TableHead>Rol</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {isLoading && ( <TableRow><TableCell colSpan={5} className="text-center">Cargando estudiantes...</TableCell></TableRow> )}
-              {!isLoading && studentsToDisplay && studentsToDisplay.length > 0 ? (
-                studentsToDisplay.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell className="font-medium">{student.firstName} {student.lastName}</TableCell>
-                    <TableCell>{student.email}</TableCell>
-                    <TableCell>
-                      {student.sectionId && sectionsMap[student.sectionId] ? ( `${gradesMap[sectionsMap[student.sectionId].gradeId] || ''} - ${sectionsMap[student.sectionId].name}` ) : ( <span className="text-muted-foreground">No asignado</span> )}
-                    </TableCell>
-                    <TableCell><Badge variant="secondary">{student.role}</Badge></TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {userRole === 'admin' && <DropdownMenuItem onClick={() => handleAssignClick(student)}>Asignar a Sección</DropdownMenuItem>}
-                          <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : !isLoading && ( <TableRow><TableCell colSpan={5} className="text-center h-24">{userRole === 'teacher' ? "Selecciona una sección para ver a los estudiantes." : "No hay estudiantes registrados."}</TableCell></TableRow> )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
 
       <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
         <DialogContent>
@@ -415,7 +415,7 @@ export default function StudentsPage() {
                   <div className="relative">
                     <FormControl><Input type={showPassword ? 'text' : 'password'} {...field} /></FormControl>
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3">
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4 />}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                   <FormMessage />
@@ -428,6 +428,6 @@ export default function StudentsPage() {
           </Form>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
