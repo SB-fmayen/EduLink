@@ -148,78 +148,29 @@ export default function StudentsPage() {
     defaultValues: { firstName: '', lastName: '', email: '', password: '' },
   });
 
-  const teacherStudentIdsQuery = useMemoFirebase(async () => {
-    if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0) return null;
-    
-    const studentIds = new Set<string>();
-    for (const course of teacherCourses) {
-        const enrollmentsRef = collection(firestore, `schools/${schoolId}/courses/${course.id}/students`);
-        const snapshot = await getDocs(enrollmentsRef);
-        snapshot.forEach(doc => studentIds.add(doc.data().studentId));
-    }
-    return studentIds.size > 0 ? Array.from(studentIds) : [];
-  }, [userRole, teacherCourses, firestore, schoolId]);
-
-  const { data: teacherStudentIds, isLoading: isLoadingTeacherStudentIds } = useDoc<string[]>(teacherStudentIdsQuery as any);
-
-  const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(
-    useMemoFirebase(() => {
-        if (!teacherStudentIds || teacherStudentIds.length === 0) return null;
-        return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds));
-    }, [teacherStudentIds, firestore])
-  );
-
-  const studentsToDisplay = React.useMemo(() => {
-    if (userRole === 'admin') return allStudents;
-    if (userRole === 'teacher') {
-      if (!teacherStudents) return [];
-      if (!selectedSectionFilter || selectedSectionFilter === 'all') {
-        return teacherStudents;
-      }
-      return teacherStudents.filter(student => student.sectionId === selectedSectionFilter);
-    }
-    return [];
-  }, [allStudents, teacherStudents, userRole, selectedSectionFilter]);
-  
-  const isLoading = isProfilesLoading || isLoadingTeacherStudentIds || isLoadingTeacherStudents;
-
-  const handleAssignClick = (student: UserData) => {
-    setSelectedStudent(student);
-    setSelectedSection(student.sectionId || '');
-    setIsAssignDialogOpen(true);
-  };
-
   const onNewStudentSubmit = async (values: z.infer<typeof newStudentFormSchema>) => {
     if (!schoolId) {
       toast({ variant: 'destructive', title: 'Error', description: 'No se ha podido identificar la escuela del administrador.' });
       return;
     }
-    
+
     const secondaryAppName = `secondary-creation-app-${Date.now()}`;
     let secondaryApp;
-    
+
     try {
-      // Admin (using primary firestore instance) creates the school-specific reference document first
-      const newStudentRef = doc(collection(firestore, 'users'));
-      const newUserId = newStudentRef.id;
-
-      const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newUserId);
-      await setDoc(schoolStudentRef, { id: newUserId });
-
-      // Now create the user and their profile using the secondary app
       secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
       const secondaryAuth = getAuth(secondaryApp);
       const secondaryFirestore = getFirestore(secondaryApp);
 
-      // Create user in Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       
-      // Sign in the new user TEMPORARILY in the secondary app to get permissions
+      const newStudentId = userCredential.user.uid;
+      const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
+      await setDoc(schoolStudentRef, { id: newStudentId });
+
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
       
-      // New user writes their own profile to the main /users collection
-      const userPayload: UserData = {
-        id: userCredential.user.uid,
+      const userPayload: Omit<UserData, 'id'> = {
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
@@ -227,7 +178,7 @@ export default function StudentsPage() {
         schoolId: schoolId,
       };
       
-      const userDocRef = doc(secondaryFirestore, 'users', userCredential.user.uid);
+      const userDocRef = doc(secondaryFirestore, 'users', newStudentId);
       await setDoc(userDocRef, userPayload);
       
       toast({ 
@@ -307,6 +258,47 @@ export default function StudentsPage() {
     setSelectedSection('');
     setSelectedStudent(null);
   };
+  
+  const handleAssignClick = (student: UserData) => {
+    setSelectedStudent(student);
+    setSelectedSection(student.sectionId || '');
+    setIsAssignDialogOpen(true);
+  };
+  
+  const teacherStudentIdsQuery = useMemoFirebase(async () => {
+    if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0) return null;
+    
+    const studentIds = new Set<string>();
+    for (const course of teacherCourses) {
+        const enrollmentsRef = collection(firestore, `schools/${schoolId}/courses/${course.id}/students`);
+        const snapshot = await getDocs(enrollmentsRef);
+        snapshot.forEach(doc => studentIds.add(doc.data().studentId));
+    }
+    return studentIds.size > 0 ? Array.from(studentIds) : [];
+  }, [userRole, teacherCourses, firestore, schoolId]);
+
+  const { data: teacherStudentIds, isLoading: isLoadingTeacherStudentIds } = useDoc<string[]>(teacherStudentIdsQuery as any);
+
+  const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(
+    useMemoFirebase(() => {
+        if (!teacherStudentIds || teacherStudentIds.length === 0) return null;
+        return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds));
+    }, [teacherStudentIds, firestore])
+  );
+
+  const studentsToDisplay = React.useMemo(() => {
+    if (userRole === 'admin') return allStudents;
+    if (userRole === 'teacher') {
+      if (!teacherStudents) return [];
+      if (!selectedSectionFilter || selectedSectionFilter === 'all') {
+        return teacherStudents;
+      }
+      return teacherStudents.filter(student => student.sectionId === selectedSectionFilter);
+    }
+    return [];
+  }, [allStudents, teacherStudents, userRole, selectedSectionFilter]);
+  
+  const isLoading = isProfilesLoading || isLoadingTeacherStudentIds || isLoadingTeacherStudents;
   
   return (
     <div className="flex flex-col gap-6">
