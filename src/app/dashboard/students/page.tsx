@@ -200,7 +200,7 @@ export default function StudentsPage() {
     
     try {
       // Admin (using primary firestore instance) creates the school-specific reference document first
-      const newStudentRef = doc(collection(firestore, 'users')); // Create a ref to get a new ID
+      const newStudentRef = doc(collection(firestore, 'users'));
       const newUserId = newStudentRef.id;
 
       const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newUserId);
@@ -213,16 +213,13 @@ export default function StudentsPage() {
 
       // Create user in Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-
-      // This is a workaround because userCredential.user.uid is not always the same as the one we need to use if we create the user with a specific ID
-      // So we have to write the profile with the ID we generated
       
       // Sign in the new user TEMPORARILY in the secondary app to get permissions
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
       
       // New user writes their own profile to the main /users collection
       const userPayload: UserData = {
-        id: userCredential.user.uid, // Use the actual UID from Auth
+        id: userCredential.user.uid,
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
@@ -310,7 +307,7 @@ export default function StudentsPage() {
     setSelectedSection('');
     setSelectedStudent(null);
   };
-
+  
   return (
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center">
