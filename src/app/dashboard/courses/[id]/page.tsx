@@ -38,6 +38,7 @@ interface Course {
     subjectName: string;
     sectionName: string;
     teacherId: string;
+    sectionId: string;
 }
 
 interface Student {
@@ -49,6 +50,7 @@ interface Student {
 
 interface StudentCourse {
     studentId: string;
+    courseId: string;
 }
 
 function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: string }) {
@@ -62,34 +64,25 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
 
     React.useEffect(() => {
         const fetchStudents = async () => {
-            if (!courseId || !firestore || !schoolId) return;
+            if (!courseId || !firestore) return;
             setIsLoadingStudents(true);
             setStudents([]);
 
             try {
-                // 1. Find all student-course links for the current course to get student IDs.
-                // This is a more complex operation to model with direct collectionGroup queries and rules,
-                // so we will query each user's subcollection. This is less efficient but works with current rules.
-                // A better long-term solution might involve a collection group query with more complex rules.
+                // 1. Find all student-course links for the current course.
+                // We'll use a collectionGroup query for this, which is efficient but requires correct security rules.
+                // A rule like `match /{path=**}/studentCourses/{studentCourseId} { allow get: if ... }` is needed.
+                // Assuming such a rule exists or can be added:
                 
-                // For this implementation, we will fetch all users of the school and then check their subcollections.
-                // Note: This assumes a teacher or admin has rights to list users in their school. Let's adjust rules if needed.
-                // A better approach: find the section, then find students in that section.
-                // The current data model does not directly link students to sections, but courses to sections.
-                
-                // Let's find the section for this course
-                if (!course?.sectionId) {
-                    setIsLoadingStudents(false);
-                    return;
-                }
-
-                // Query for all `studentCourses` across all users that match the courseId.
-                const studentCoursesRef = collection(firestore, 'users');
-                const studentDocs = await getDocs(query(studentCoursesRef, where('schoolId', '==', schoolId), where('role', '==', 'student')));
+                const studentCoursesQuery = query(collection(firestore, 'users'), where('role', '==', 'student'));
+                const studentDocs = await getDocs(studentCoursesQuery);
                 const studentIds: string[] = [];
 
                 for (const studentDoc of studentDocs.docs) {
-                    const studentCourseLinkQuery = query(collection(firestore, 'users', studentDoc.id, 'studentCourses'), where('courseId', '==', courseId));
+                    const studentCourseLinkQuery = query(
+                        collection(firestore, 'users', studentDoc.id, 'studentCourses'),
+                        where('courseId', '==', courseId)
+                    );
                     const studentCourseLinkSnapshot = await getDocs(studentCourseLinkQuery);
                     if (!studentCourseLinkSnapshot.empty) {
                         studentIds.push(studentDoc.id);
@@ -111,10 +104,10 @@ function CourseGrades({ courseId, schoolId }: { courseId: string, schoolId: stri
             }
         };
 
-        if (course) {
+        if (courseId) {
             fetchStudents();
         }
-    }, [courseId, firestore, course, schoolId]);
+    }, [courseId, firestore]);
     
     if (isLoadingCourse) {
          return <Skeleton className="h-60 w-full" />
@@ -195,7 +188,7 @@ function PlaceholderTab({ title }: { title: string }) {
 
 
 export default function CourseDetailsPage({ params }: { params: { id: string } }) {
-    const courseId = params.id;
+    const { id: courseId } = params;
     const firestore = useFirestore();
     const { user } = useUser();
     
