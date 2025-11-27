@@ -59,10 +59,8 @@ interface UserProfile {
   schoolId: string;
 }
 
-function CourseGrades({ course, schoolId, currentUser }: { course: Course, schoolId: string, currentUser: { uid: string, profile: UserProfile | null } }) {
+function CourseGrades({ course, schoolId, canViewStudents }: { course: Course, schoolId: string, canViewStudents: boolean }) {
     const firestore = useFirestore();
-
-    const canViewStudents = currentUser.profile?.role === 'admin' || currentUser.uid === course.teacherId;
 
     // 1. Get the list of enrolled student IDs from the subcollection
     const enrolledStudentsRef = useMemoFirebase(() => {
@@ -183,16 +181,17 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     const schoolId = userProfile?.schoolId;
 
     const courseRef = useMemoFirebase(() => {
-        // Ensure schoolId and courseId are available before creating the reference
         if (schoolId && courseId) {
             return doc(firestore, `schools/${schoolId}/courses`, courseId);
         }
-        return null; // Return null if dependencies are not ready
+        return null;
     }, [firestore, schoolId, courseId]);
     
     const { data: course, isLoading: isCourseLoading } = useDoc<Course>(courseRef);
 
-    if (isUserLoading || isCourseLoading) {
+    const isLoading = isUserLoading || isCourseLoading;
+
+    if (isLoading) {
         return (
             <div className="space-y-4">
                 <Skeleton className="h-9 w-1/2" />
@@ -206,7 +205,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         return <p>No se pudo cargar la información del curso o del usuario.</p>
     }
 
-    const currentUser = { uid: user.uid, profile: userProfile };
+    const canViewStudents = userProfile.role === 'admin' || user.uid === course.teacherId;
 
     return (
         <div className="flex flex-col gap-6">
@@ -231,7 +230,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="grades">
-                    <CourseGrades course={course} schoolId={schoolId!} currentUser={currentUser} />
+                    <CourseGrades course={course} schoolId={schoolId!} canViewStudents={canViewStudents} />
                 </TabsContent>
                 <TabsContent value="assignments">
                      <PlaceholderTab title="Tareas" />
