@@ -91,7 +91,11 @@ export default function TeachersPage() {
     if (userRole === 'admin' && adminSchoolId) {
       return query(collection(firestore, 'users'), where('schoolId', '==', adminSchoolId), where('role', '==', 'teacher'));
     }
-    return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
+    // For non-admins or admins without a schoolId, we return null to avoid unnecessary queries.
+    if (userRole === 'admin') {
+      return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
+    }
+    return null;
   }, [firestore, userRole, adminSchoolId]);
 
   const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
@@ -205,10 +209,14 @@ export default function TeachersPage() {
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
       const newUser = userCredential.user;
 
-      // 2. Sign in new user in secondary app
+      // 2. The admin (using the main app's firestore instance) creates the school-specific reference
+      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
+      await setDoc(schoolTeacherRef, { id: newUser.uid });
+
+      // 3. Sign in the new user in the secondary app to gain write permission for their own user document
       await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
 
-      // 3. Write data to Firestore as the new user
+      // 4. The new user writes their own profile document
       const userPayload: UserData = {
         id: newUser.uid,
         firstName: values.firstName,
@@ -217,14 +225,8 @@ export default function TeachersPage() {
         role: 'teacher',
         schoolId: adminSchoolId,
       };
-
       const userDocRef = doc(secondaryFirestore, 'users', newUser.uid);
-      const schoolTeacherRef = doc(secondaryFirestore, `schools/${adminSchoolId}/teachers`, newUser.uid);
-      
-      const batch = writeBatch(secondaryFirestore);
-      batch.set(userDocRef, userPayload);
-      batch.set(schoolTeacherRef, { id: newUser.uid });
-      await batch.commit();
+      await setDoc(userDocRef, userPayload);
       
       toast({ 
           title: 'Profesor Creado', 
@@ -241,7 +243,7 @@ export default function TeachersPage() {
         toast({ variant: 'destructive', title: 'Error al crear profesor', description: error.message || 'Ocurrió un error inesperado.' });
       }
     } finally {
-        // 4. Clean up
+        // 5. Clean up
         if (secondaryAuth.currentUser) {
             await signOut(secondaryAuth);
         }
@@ -419,5 +421,3 @@ export default function TeachersPage() {
     </div>
   );
 }
-
-    

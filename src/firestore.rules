@@ -71,13 +71,15 @@ service cloud.firestore {
       match /teachers/{teacherId} {
         allow get: if isMemberOfSchool(userProfile, schoolId);
         allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow write: if isAdmin(userProfile); // Only admins can manage the teacher list
+        allow create: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
+        allow write: if isAdmin(userProfile);
       }
 
       match /students/{studentId} {
         allow get: if isMemberOfSchool(userProfile, schoolId);
         allow list: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
-        allow write: if isAdmin(userProfile); // Only admins can manage the student list for now
+        allow create: if isAdmin(userProfile) && isMemberOfSchool(userProfile, schoolId);
+        allow write: if isAdmin(userProfile);
       }
 
       match /grades/{gradeId} {
@@ -143,6 +145,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // New users can create their own profile.
+      allow create: if isOwner(userId);
+      
       let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
 
       // Users can read their own profile. Admins can read any profile.
@@ -150,9 +155,6 @@ service cloud.firestore {
       
       // Admins can list all users of a certain role within their school
       allow list: if isAdmin(userProfile) && request.query.where.schoolId == userProfile.data.schoolId;
-
-      // Allow a user to create their own document. This is key for the new user flow.
-      allow create: if isOwner(userId);
 
       // Users can update their own profile, admins can update any.
       allow update: if isOwner(userId) || isAdmin(userProfile);
