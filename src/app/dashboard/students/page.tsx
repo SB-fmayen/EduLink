@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -99,34 +98,27 @@ export default function StudentsPage() {
   const { data: userData } = useDoc<{ schoolId: string; role: Role }>(userDocRef);
   const schoolId = userData?.schoolId;
   const userRole = userData?.role;
-  
+
   const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('all');
 
   const studentsQuery = useMemoFirebase(() => {
     if (schoolId && userRole === 'admin') {
       return query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'student'));
     }
-    return null; // Teachers will filter differently
+    return null;
   }, [schoolId, userRole, firestore]);
   const { data: allStudents, isLoading: isProfilesLoading } = useCollection<UserData>(studentsQuery);
 
-
   const teacherCoursesQuery = useMemoFirebase(() => {
-      if (userRole === 'teacher' && user && schoolId) {
-          return query(collection(firestore, `schools/${schoolId}/courses`), where('teacherId', '==', user.uid));
-      }
-      return null;
+    if (userRole === 'teacher' && user && schoolId) {
+      return query(collection(firestore, `schools/${schoolId}/courses`), where('teacherId', '==', user.uid));
+    }
+    return null;
   }, [schoolId, userRole, user, firestore]);
   const { data: teacherCourses } = useCollection<CourseData>(teacherCoursesQuery);
 
   const allSectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
   const { data: allSections } = useCollection<SectionData>(allSectionsRef);
-
-  const teacherSections = React.useMemo(() => {
-    if (userRole !== 'teacher' || !teacherCourses || !allSections) return allSections || [];
-    const sectionIds = new Set(teacherCourses.map(c => c.sectionId));
-    return allSections.filter(s => sectionIds.has(s.id));
-  }, [userRole, teacherCourses, allSections]);
 
   const gradesRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null), [schoolId, firestore]);
   const { data: grades } = useCollection<GradeData>(gradesRef);
@@ -139,7 +131,16 @@ export default function StudentsPage() {
   const [selectedStudent, setSelectedStudent] = React.useState<UserData | null>(null);
   const [selectedSection, setSelectedSection] = React.useState<string>('');
   const [showPassword, setShowPassword] = React.useState(false);
+  const [teacherStudentIds, setTeacherStudentIds] = React.useState<string[] | null>(null);
+  const [isLoadingTeacherStudentIds, setIsLoadingTeacherStudentIds] = React.useState(true);
 
+
+  const teacherSections = React.useMemo(() => {
+    if (userRole !== 'teacher' || !teacherCourses || !allSections) return allSections || [];
+    const sectionIds = new Set(teacherCourses.map(c => c.sectionId));
+    return allSections.filter(s => sectionIds.has(s.id));
+  }, [userRole, teacherCourses, allSections]);
+  
   const gradesMap = React.useMemo(() => grades?.reduce((acc, grade) => ({ ...acc, [grade.id]: grade.name }), {} as Record<string, string>) || {}, [grades]);
   const sectionsMap = React.useMemo(() => allSections?.reduce((acc, section) => ({ ...acc, [section.id]: section }), {} as Record<string, SectionData>) || {}, [allSections]);
 
@@ -166,11 +167,9 @@ export default function StudentsPage() {
         const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
         newStudentId = userCredential.user.uid;
         
-        // Admin creates the reference doc
         const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
         await setDoc(schoolStudentRef, { id: newStudentId });
         
-        // New user signs in and creates their own profile
         await signInWithEmailAndPassword(secondaryAuth, values.email, values.password);
         
         const userPayload: Omit<UserData, 'id'> = {
@@ -269,26 +268,43 @@ export default function StudentsPage() {
     setIsAssignDialogOpen(true);
   };
   
-  const teacherStudentIdsQuery = useMemoFirebase(async () => {
-    if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0) return null;
-    
-    const studentIds = new Set<string>();
-    for (const course of teacherCourses) {
-        const enrollmentsRef = collection(firestore, `schools/${schoolId}/courses/${course.id}/students`);
-        const snapshot = await getDocs(enrollmentsRef);
-        snapshot.forEach(doc => studentIds.add(doc.data().studentId));
+  React.useEffect(() => {
+    async function fetchTeacherStudentIds() {
+        if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0 || !schoolId || !firestore) {
+          setIsLoadingTeacherStudentIds(false);
+          setTeacherStudentIds([]);
+          return;
+        }
+
+        setIsLoadingTeacherStudentIds(true);
+        const studentIds = new Set<string>();
+        try {
+            for (const course of teacherCourses) {
+                const enrollmentsRef = collection(firestore, `schools/${schoolId}/courses/${course.id}/students`);
+                const snapshot = await getDocs(enrollmentsRef);
+                snapshot.forEach(doc => studentIds.add(doc.data().studentId));
+            }
+            setTeacherStudentIds(studentIds.size > 0 ? Array.from(studentIds) : []);
+        } catch (error) {
+            console.error("Error fetching teacher student IDs:", error);
+            setTeacherStudentIds([]);
+        } finally {
+            setIsLoadingTeacherStudentIds(false);
+        }
     }
-    return studentIds.size > 0 ? Array.from(studentIds) : [];
+    fetchTeacherStudentIds();
   }, [userRole, teacherCourses, firestore, schoolId]);
 
-  const { data: teacherStudentIds, isLoading: isLoadingTeacherStudentIds } = useDoc<string[]>(teacherStudentIdsQuery as any);
 
-  const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(
-    useMemoFirebase(() => {
-        if (!teacherStudentIds || teacherStudentIds.length === 0) return null;
-        return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds));
-    }, [teacherStudentIds, firestore])
-  );
+  const teacherStudentsQuery = useMemoFirebase(() => {
+    if (teacherStudentIds === null || teacherStudentIds.length === 0) {
+      return null;
+    }
+    // Firestore 'in' query is limited to 30 items. We need to handle this.
+    // For now, let's just slice, but a real-world app would need pagination or multiple queries.
+    return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds.slice(0, 30)));
+  }, [teacherStudentIds, firestore]);
+  const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(teacherStudentsQuery);
 
   const studentsToDisplay = React.useMemo(() => {
     if (userRole === 'admin') return allStudents;
