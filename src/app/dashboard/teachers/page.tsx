@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useAuth } from '@/firebase';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, doc, writeBatch } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
@@ -44,10 +44,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp, FirebaseOptions } from "firebase/app";
-import { getAuth } from 'firebase/auth';
-import { firebaseConfig } from '@/firebase/config';
+import { createUserAction } from '@/app/actions/create-user-action';
+
 
 interface UserData {
   id: string;
@@ -188,63 +186,59 @@ export default function TeachersPage() {
 
   const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
     if (!adminSchoolId) {
-        toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
-        return;
+      toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
+      return;
     }
   
-    const secondaryAppName = `secondary-creation-app-${Date.now()}`;
-    let secondaryApp;
-    let newUserId = '';
-
     try {
-        secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
-        const secondaryAuth = getAuth(secondaryApp);
-        
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-        newUserId = userCredential.user.uid;
-
-        const batch = writeBatch(firestore);
-
-        const userPayload: Omit<UserData, 'id'> = {
-            firstName: values.firstName,
-            lastName: values.lastName,
-            email: values.email,
-            role: 'teacher',
-            schoolId: adminSchoolId,
-        };
-        const userDocRef = doc(firestore, 'users', newUserId);
-        batch.set(userDocRef, userPayload);
-        
-        const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUserId);
-        batch.set(schoolTeacherRef, { id: newUserId });
-
-        await batch.commit();
-      
-        toast({ 
-            title: 'Profesor Creado', 
-            description: 'La cuenta y el perfil del profesor han sido creados correctamente.' 
-        });
-        setIsNewTeacherDialogOpen(false);
-        newTeacherForm.reset();
-
-    } catch (error: any) {
-        if (error.code === 'auth/email-already-in-use') {
-            newTeacherForm.setError('email', { type: 'manual', message: 'Este correo electrónico ya está registrado.' });
+      // 1. Llama a la Server Action para crear el usuario en Firebase Auth
+      const { uid, error: authError } = await createUserAction(values.email, values.password);
+  
+      if (authError) {
+        if (authError.code === 'auth/email-already-in-use') {
+          newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
         } else {
-            console.error("Error al crear profesor:", error);
-            toast({ variant: 'destructive', title: 'Error al crear profesor', description: 'No se pudo crear la cuenta. Por favor, inténtalo de nuevo.' });
+           toast({ variant: 'destructive', title: 'Error de Autenticación', description: authError.message });
         }
-    } finally {
-        if (secondaryApp) {
-            const secondaryAuth = getAuth(secondaryApp);
-            if (secondaryAuth.currentUser) {
-                await signOut(secondaryAuth);
-            }
-            await deleteApp(secondaryApp);
-        }
+        return;
+      }
+  
+      if (!uid) {
+        toast({ variant: 'destructive', title: 'Error de Creación', description: 'No se pudo obtener el ID del nuevo usuario.' });
+        return;
+      }
+      
+      // 2. Si la autenticación es exitosa, crea los documentos en Firestore
+      const batch = writeBatch(firestore);
+      const userPayload: Omit<UserData, 'id'> = {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        role: 'teacher',
+        schoolId: adminSchoolId,
+      };
+      
+      const userDocRef = doc(firestore, 'users', uid);
+      batch.set(userDocRef, userPayload);
+      
+      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, uid);
+      batch.set(schoolTeacherRef, { id: uid });
+      
+      await batch.commit();
+      
+      toast({
+        title: 'Profesor Creado',
+        description: 'La cuenta y el perfil del profesor han sido creados correctamente.'
+      });
+      setIsNewTeacherDialogOpen(false);
+      newTeacherForm.reset();
+  
+    } catch (dbError: any) {
+      console.error("Error al escribir en Firestore:", dbError);
+      toast({ variant: 'destructive', title: 'Error de Base de Datos', description: 'El usuario fue autenticado pero no se pudo guardar su perfil. Contacta a soporte.' });
     }
   };
-
+  
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
