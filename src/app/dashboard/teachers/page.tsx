@@ -33,7 +33,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useAuth } from '@/firebase';
-import { collection, query, where, doc, writeBatch, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, writeBatch } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { useRouter } from 'next/navigation';
@@ -48,8 +48,6 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { initializeApp, deleteApp, FirebaseOptions } from "firebase/app";
 import { getAuth } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-
 
 interface UserData {
   id: string;
@@ -80,7 +78,6 @@ const newTeacherFormSchema = z.object({
 
 export default function TeachersPage() {
   const firestore = useFirestore();
-  const mainAuth = useAuth();
   const { user } = useUser();
   const router = useRouter();
 
@@ -93,7 +90,6 @@ export default function TeachersPage() {
     if (userRole === 'admin' && adminSchoolId) {
       return query(collection(firestore, 'users'), where('schoolId', '==', adminSchoolId), where('role', '==', 'teacher'));
     }
-    // Allow super admin to see all teachers if not scoped to a school
     if (userRole === 'admin' && !adminSchoolId) { 
       return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }
@@ -196,49 +192,58 @@ export default function TeachersPage() {
         return;
     }
   
-    const secondaryAppName = `secondary-app-for-creation`;
+    const secondaryAppName = `secondary-creation-app-${Date.now()}`;
     let secondaryApp;
+    let newUserId = '';
+
     try {
         secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
         const secondaryAuth = getAuth(secondaryApp);
         
         const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-        const newUserId = userCredential.user.uid;
+        newUserId = userCredential.user.uid;
 
-        const userPayload = {
+        const batch = writeBatch(firestore);
+
+        const userPayload: Omit<UserData, 'id'> = {
             firstName: values.firstName,
             lastName: values.lastName,
             email: values.email,
             role: 'teacher',
             schoolId: adminSchoolId,
         };
-
-        const batch = writeBatch(firestore);
         const userDocRef = doc(firestore, 'users', newUserId);
-        const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUserId);
-
         batch.set(userDocRef, userPayload);
+        
+        const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, newUserId);
         batch.set(schoolTeacherRef, { id: newUserId });
 
         await batch.commit();
-
-        toast({ title: 'Profesor Creado', description: 'La cuenta y el perfil del profesor han sido creados correctamente.' });
+      
+        toast({ 
+            title: 'Profesor Creado', 
+            description: 'La cuenta y el perfil del profesor han sido creados correctamente.' 
+        });
         setIsNewTeacherDialogOpen(false);
         newTeacherForm.reset();
 
     } catch (error: any) {
-        console.error("Error creating teacher:", error);
         if (error.code === 'auth/email-already-in-use') {
-            newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
+            newTeacherForm.setError('email', { type: 'manual', message: 'Este correo electrónico ya está registrado.' });
         } else {
-            toast({ variant: 'destructive', title: 'Error al Crear Cuenta', description: error.message || 'Ocurrió un error inesperado.' });
+            console.error("Error al crear profesor:", error);
+            toast({ variant: 'destructive', title: 'Error al crear profesor', description: 'No se pudo crear la cuenta. Por favor, inténtalo de nuevo.' });
         }
     } finally {
         if (secondaryApp) {
-            await deleteApp(secondaryApp).catch(e => console.error("Error deleting secondary app", e));
+            const secondaryAuth = getAuth(secondaryApp);
+            if (secondaryAuth.currentUser) {
+                await signOut(secondaryAuth);
+            }
+            await deleteApp(secondaryApp);
         }
     }
-};
+  };
 
   return (
     <div className="flex flex-col gap-6">
