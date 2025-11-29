@@ -10,8 +10,8 @@ import { initializeApp, getApps, App } from 'firebase-admin/app';
  */
 function initializeAdminApp(): App {
   // If no apps are initialized, initialize a new one.
-  // initializeApp() will automatically use the GOOGLE_APPLICATION_CREDENTIALS
-  // environment variable for authentication.
+  // When run locally, initializeApp() will automatically use the GOOGLE_APPLICATION_CREDENTIALS
+  // environment variable. In a Firebase environment, it uses the built-in credentials.
   if (getApps().length === 0) {
     return initializeApp();
   }
@@ -45,6 +45,7 @@ export async function createUserAction(email: string, password: string): Promise
     console.error('Error creating user (Server Action):', error);
     
     // Return a simplified error object for the client.
+    // The client can then check for specific error codes like 'auth/email-already-in-use'.
     return { error: { code: error.code || 'unknown', message: error.message || 'An unexpected server error occurred.' } };
   }
 }
