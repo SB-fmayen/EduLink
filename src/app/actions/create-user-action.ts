@@ -1,7 +1,7 @@
 'use server';
 
 import { getAuth } from 'firebase-admin/auth';
-import { initializeApp, getApps, App } from 'firebase-admin/app';
+import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
 
 /**
  * Initializes the Firebase Admin app, ensuring it's only done once.
@@ -9,13 +9,11 @@ import { initializeApp, getApps, App } from 'firebase-admin/app';
  * @returns {App} The initialized Firebase Admin App.
  */
 function initializeAdminApp(): App {
-  // If no apps are initialized, initialize a new one.
-  // When run locally, initializeApp() will automatically use the GOOGLE_APPLICATION_CREDENTIALS
-  // environment variable. In a Firebase environment, it uses the built-in credentials.
   if (getApps().length === 0) {
-    return initializeApp();
+    return initializeApp({
+        credential: applicationDefault()
+    });
   }
-  // Otherwise, return the already initialized app.
   return getApps()[0];
 }
 

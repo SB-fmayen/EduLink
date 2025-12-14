@@ -2,7 +2,7 @@
 
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { initializeApp, getApps, App } from 'firebase-admin/app';
+import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
 
 /**
  * Initializes the Firebase Admin app, ensuring it's only done once.
@@ -10,7 +10,9 @@ import { initializeApp, getApps, App } from 'firebase-admin/app';
  */
 function initializeAdminApp(): App {
   if (getApps().length === 0) {
-    return initializeApp();
+     return initializeApp({
+        credential: applicationDefault()
+    });
   }
   return getApps()[0];
 }
