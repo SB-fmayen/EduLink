@@ -3,218 +3,156 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions to abstract and simplify rule logic.
+    // --- Funciones de Ayuda (Helpers) ---
 
     /**
-     * Returns true if the user is authenticated.
+     * Verifica si hay un usuario autenticado en la solicitud.
+     * @returns {boolean} True si el usuario está autenticado.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * Returns true if the requesting user's UID matches the provided userId.
-     * This is the foundation of the user-ownership model.
+     * Verifica si el usuario autenticado es el propietario de un documento.
+     * Compara el UID del token de autenticación con un userId proporcionado.
+     * @param {string} userId - El UID del usuario a verificar.
+     * @returns {boolean} True si el usuario es el propietario.
      */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
     
     /**
-     * Returns true if the user's role is admin.
-     * Reads the user's profile from the /users collection.
+     * Obtiene el perfil del usuario que realiza la solicitud.
+     * @returns {Resource} El documento del perfil del usuario.
      */
-    function isAdmin(userProfile) {
-        return isSignedIn() && userProfile.data.role == 'admin';
+    function getRequesterProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
     /**
-     * Checks if the user's schoolId from their profile matches the target schoolId.
-     * This function no longer performs a `get()`. It relies on the user profile
-     * being passed in as an argument.
+     * Verifica si el usuario autenticado tiene el rol de 'admin'.
+     * Utiliza el perfil del usuario para verificar el campo 'role'.
+     * @returns {boolean} True si el usuario es administrador.
      */
-    function isMemberOfSchool(userProfile, schoolId) {
-      return isSignedIn() && userProfile.data.schoolId == schoolId;
+    function isAdmin() {
+      // Un usuario es admin si está autenticado y su documento de perfil tiene el rol 'admin'.
+      return isSignedIn() && getRequesterProfile().data.role == 'admin';
+    }
+
+    /**
+     * Verifica si el usuario autenticado pertenece a una escuela específica.
+     * @param {string} schoolId - El ID de la escuela a verificar.
+     * @returns {boolean} True si el usuario es miembro de la escuela.
+     */
+    function isMemberOfSchool(schoolId) {
+      // El perfil del usuario que hace la solicitud debe tener el schoolId correspondiente.
+      return isSignedIn() && getRequesterProfile().data.schoolId == schoolId;
     }
     
     /**
-     * Returns true if the user's role is 'teacher'.
-     * Relies on the user profile being passed in as an argument.
+     * Verifica si el usuario autenticado es el profesor de un curso específico.
+     * @param {string} schoolId - El ID de la escuela del curso.
+     * @param {string} courseId - El ID del curso a verificar.
+     * @returns {boolean} True si el usuario es el profesor del curso.
      */
-    function isTeacher(userProfile) {
-      return isSignedIn() && userProfile.data.role == 'teacher';
-    }
-    
     function isTeacherOfCourse(schoolId, courseId) {
       let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
       return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
     }
-    
+
+    // --- Reglas de Colecciones ---
+
     // --- Collection Group Rules ---
+    // Permite a un estudiante consultar los cursos en los que está inscrito.
     match /{path=**}/students/{studentId} {
-      function getCourseIdFromPath(pathToStudent) {
-        return pathToStudent[3]; // e.g., /schools/{schoolId}/courses/{courseId}/students/{studentId} -> courses is at index 2, courseId is at index 3
-      }
-      function getSchoolIdFromPath(pathToStudent) {
-        return pathToStudent[1];
-      }
-      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      // Allow a student to read their own enrollment.
-      // Allow a teacher to read the enrollment of a student in their course.
-      // Allow an admin to read any enrollment.
-      allow get: if isOwner(resource.data.studentId) || isAdmin(userProfile) || isTeacherOfCourse(getSchoolIdFromPath(path), getCourseIdFromPath(path));
-      allow list: if request.query.where.studentId == request.auth.uid || isAdmin(userProfile);
+        // Un estudiante puede leer su propia inscripción.
+        // Un profesor puede leer la inscripción de un estudiante en su curso.
+        // Un administrador puede leer cualquier inscripción.
+        allow get: if isOwner(studentId) || isTeacherOfCourse(path[1], path[3]) || isAdmin();
+        // Un estudiante puede listar todas sus inscripciones (para el dashboard).
+        // Un administrador puede listar cualquier inscripción (para vistas de admin).
+        allow list: if (request.query.keys().hasAny(['studentId']) && request.query.studentId == request.auth.uid) || isAdmin();
     }
 
+    // Reglas para la colección 'schools'.
     match /schools/{schoolId} {
-      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-
-      // Admins can manage schools, any signed-in user can view them.
+      // Cualquier usuario autenticado puede leer la lista de escuelas y sus detalles.
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin(userProfile);
+      // Solo los administradores pueden crear, actualizar o eliminar escuelas.
+      allow create, update, delete: if isAdmin();
       
-      // Rules for role-based subcollections
+      // Subcolecciones dentro de cada escuela.
       match /teachers/{teacherId} {
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
-        allow delete: if isAdmin(userProfile); 
+        // Miembros de la escuela pueden ver la lista de profesores de esa escuela.
+        allow get, list: if isMemberOfSchool(schoolId);
+        // Solo admins pueden añadir o quitar profesores de la lista de una escuela.
+        allow create, delete: if isAdmin();
       }
 
       match /students/{studentId} {
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create: if isAdmin(userProfile); // Only an admin of the school can create this reference
-        allow delete: if isAdmin(userProfile);
+        // Miembros de la escuela pueden ver la lista de estudiantes de esa escuela.
+        // El usuario que se registra (futuro estudiante) también puede crear su propia referencia aquí.
+        allow get, list: if isMemberOfSchool(schoolId);
+        allow create: if isAdmin() || isOwner(studentId);
+        allow delete: if isAdmin();
       }
 
       match /grades/{gradeId} {
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create, update, delete: if isAdmin(userProfile);
+        // Miembros de la escuela pueden ver los grados.
+        allow get, list: if isMemberOfSchool(schoolId);
+        // Solo admins pueden gestionar los grados.
+        allow create, update, delete: if isAdmin();
       }
 
       match /sections/{sectionId} {
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create, update, delete: if isAdmin(userProfile);
+        // Miembros de la escuela pueden ver las secciones.
+        allow get, list: if isMemberOfSchool(schoolId);
+        // Solo admins pueden gestionar las secciones.
+        allow create, update, delete: if isAdmin();
       }
 
       match /subjects/{subjectId} {
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create, update, delete: if isAdmin(userProfile);
+        // Miembros de la escuela pueden ver las asignaturas.
+        allow get, list: if isMemberOfSchool(schoolId);
+        // Solo admins pueden gestionar las asignaturas.
+        allow create, update, delete: if isAdmin();
       }
 
+      // Reglas para los cursos de una escuela.
       match /courses/{courseId} {
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create: if isAdmin(userProfile);
-        allow update, delete: if (isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile));
+        allow get, list: if isMemberOfSchool(schoolId);
+        // Admins pueden crear cursos.
+        allow create: if isAdmin();
+        // El profesor del curso o un admin pueden actualizarlo o eliminarlo.
+        allow update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin();
 
+        // Subcolección de estudiantes inscritos en un curso.
         match /students/{studentId} {
-           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile) || isOwner(studentId);
-           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin(userProfile);
-        }
-      }
-
-      match /assignments/{assignmentId} {
-        function isTeacherOfCourseForAssignment(courseId) {
-            let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
-            return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
-        }
-        
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForAssignment(request.resource.data.courseId);
-        allow update, delete: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForAssignment(resource.data.courseId);
-      }
-
-      match /onlineExams/{onlineExamId} {
-        function isTeacherOfCourseForExam(courseId) {
-            let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
-            return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
-        }
-
-        allow get, list: if isMemberOfSchool(userProfile, schoolId);
-        allow create: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForExam(request.resource.data.courseId);
-        allow update, delete: if (isTeacher(userProfile) || isAdmin(userProfile)) && isTeacherOfCourseForExam(resource.data.courseId);
-
-        match /examQuestions/{examQuestionId} {
-          function isTeacherOfParentExam() {
-            let courseId = get(/databases/$(database)/documents/schools/$(schoolId)/onlineExams/$(onlineExamId)).data.courseId;
-            let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
-            return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
-          }
-
-          allow get, list: if isMemberOfSchool(userProfile, schoolId);
-          allow create: if isTeacherOfParentExam() || isAdmin(userProfile);
-          allow update, delete: if (isTeacherOfParentExam() || isAdmin(userProfile));
+           // El profesor del curso, un admin, o el propio estudiante pueden ver la inscripción.
+           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin() || isOwner(studentId);
+           // El profesor del curso o un admin pueden inscribir o desinscribir estudiantes.
+           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin();
         }
       }
     }
 
+    // Reglas para la colección principal de usuarios.
     match /users/{userId} {
-      // A new user can only create their own profile document.
-      allow create: if isOwner(userId) || isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)));
+      // Un usuario puede leer su propio perfil. Un admin puede leer cualquier perfil.
+      allow get: if isOwner(userId) || isAdmin();
+      // Solo un admin puede listar todos los usuarios del sistema.
+      allow list: if isAdmin();
       
-      let userProfile = get(/databases/$(database)/documents/users/$(request.auth.uid));
-
-      // Users can read their own profile. Admins can read any profile.
-      allow get: if isOwner(userId) || isAdmin(userProfile);
+      // REGLA CLAVE: Un usuario puede crear su propio perfil (auto-registro), 
+      // O un admin puede crear el perfil de cualquier otro usuario.
+      allow create: if isOwner(userId) || isAdmin();
       
-      // Only admins can list all users. Teachers query students through course subcollections.
-      allow list: if isAdmin(userProfile);
-
-      // Users can update their own profile, admins can update any.
-      allow update: if isOwner(userId) || isAdmin(userProfile);
-      
-      // Only admins or the user themselves can delete a profile.
-      allow delete: if isOwner(userId) || isAdmin(userProfile);
-
-
-      match /tuitionPayments/{tuitionPaymentId} {
-        allow get, list: if isOwner(userId) || isAdmin(userProfile);
-        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
-        allow update, delete: if (isOwner(userId) || isAdmin(userProfile));
-      }
-
-      match /submittedAssignments/{submittedAssignmentId} {
-        function canAccessSubmission() {
-          let assignmentDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/assignments/$(resource.data.assignmentId));
-          let courseDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/courses/$(assignmentDoc.data.courseId));
-          return courseDoc.data.teacherId == request.auth.uid;
-        }
-
-        allow get: if isOwner(userId) || isAdmin(userProfile) || canAccessSubmission();
-        allow list: if isOwner(userId) || isAdmin(userProfile);
-        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
-        allow update, delete: if (isOwner(userId) || isAdmin(userProfile) || canAccessSubmission());
-      }
-
-      match /examAttempts/{examAttemptId} {
-        function canAccessExamAttempt() {
-          let examDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/onlineExams/$(resource.data.examId));
-          let courseDoc = get(/databases/$(database)/documents/schools/$(resource.data.schoolId)/courses/$(examDoc.data.courseId));
-          return courseDoc.data.teacherId == request.auth.uid;
-        }
-
-        allow get: if isOwner(userId) || isAdmin(userProfile) || canAccessExamAttempt();
-        allow list: if isOwner(userId) || isAdmin(userProfile);
-        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
-        allow update, delete: if (isOwner(userId) || isAdmin(userProfile) || canAccessExamAttempt());
-      }
-
-      match /notifications/{notificationId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isOwner(userId);
-        allow delete: if isOwner(userId);
-      }
+      // Un usuario puede actualizar su propio perfil. Un admin puede actualizar cualquier perfil.
+      allow update: if isOwner(userId) || isAdmin();
+      // Un usuario puede eliminar su propio perfil. Un admin puede eliminar cualquier perfil.
+      allow delete: if isOwner(userId) || isAdmin();
     }
-
-    match /chatMessages/{chatMessageId} {
-      function isParticipant() {
-        return isSignedIn() && (request.auth.uid == resource.data.senderId || request.auth.uid == resource.data.receiverId);
-      }
-      allow get: if isParticipant();
-      allow list: if false; // Disallow listing chat messages for security
-      allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
-      allow update, delete: if isOwner(resource.data.senderId);
-    }
-    
   }
 }
