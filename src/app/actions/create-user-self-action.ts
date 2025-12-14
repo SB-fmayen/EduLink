@@ -67,6 +67,17 @@ export async function createUserSelfAction(
     return { uid: userRecord.uid };
   } catch (error: any) {
     console.error('Error creating user (Self-Registration Server Action):', error);
+
+    // Check for the specific authentication error in development
+    if (error.code === 'auth/internal-error' && error.message.includes('credential-error')) {
+         return {
+            error: {
+                code: 'credential-error',
+                message: "Error de credenciales del servidor. Asegúrate de que tu archivo '.env.local' esté configurado correctamente con la ruta a tu 'serviceAccountKey.json'. Consulta la documentación para más detalles."
+            }
+        };
+    }
+    
     return {
       error: {
         code: error.code || 'unknown',
