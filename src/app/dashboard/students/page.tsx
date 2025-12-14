@@ -50,11 +50,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { initializeApp, deleteApp, FirebaseOptions } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { firebaseConfig } from '@/firebase/config';
+import { createUserAction } from '@/app/actions/create-user-action';
+
 
 interface UserData {
   id: string;
@@ -92,7 +89,6 @@ const newStudentFormSchema = z.object({
 
 export default function StudentsPage() {
   const firestore = useFirestore();
-  const mainAuth = useAuth();
   const { user } = useUser();
 
   const userDocRef = useMemoFirebase(() => (user ? doc(firestore, `users/${user.uid}`) : null), [user, firestore]);
@@ -155,57 +151,51 @@ export default function StudentsPage() {
       toast({ variant: 'destructive', title: 'Error', description: 'No se ha podido identificar la escuela del administrador.' });
       return;
     }
-
-    const secondaryAppName = `secondary-creation-app-${Date.now()}`;
-    let secondaryApp;
-    let newStudentId = '';
-
+  
     try {
-        secondaryApp = initializeApp(firebaseConfig as FirebaseOptions, secondaryAppName);
-        const secondaryAuth = getAuth(secondaryApp);
-        
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, values.email, values.password);
-        newStudentId = userCredential.user.uid;
-        
-        const batch = writeBatch(firestore);
-
-        const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, newStudentId);
-        batch.set(schoolStudentRef, { id: newStudentId });
-        
-        const userPayload: Omit<UserData, 'id'> = {
-            firstName: values.firstName,
-            lastName: values.lastName,
-            email: values.email,
-            role: 'student',
-            schoolId: schoolId,
-        };
-        const userDocRef = doc(firestore, 'users', newStudentId);
-        batch.set(userDocRef, userPayload);
-        
-        await batch.commit();
+      const { uid, error: authError } = await createUserAction(values.email, values.password);
+  
+      if (authError) {
+        if (authError.code === 'auth/email-already-in-use') {
+          newStudentForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
+        } else {
+           toast({ variant: 'destructive', title: 'Error de Autenticación', description: authError.message });
+        }
+        return;
+      }
+  
+      if (!uid) {
+        toast({ variant: 'destructive', title: 'Error de Creación', description: 'No se pudo obtener el ID del nuevo usuario.' });
+        return;
+      }
       
-      toast({ 
-        title: 'Estudiante Creado', 
-        description: 'La cuenta ha sido creada y guardada correctamente.' 
+      const batch = writeBatch(firestore);
+      const userPayload: Omit<UserData, 'id'> = {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        role: 'student',
+        schoolId: schoolId,
+      };
+      
+      const userDocRef = doc(firestore, 'users', uid);
+      batch.set(userDocRef, userPayload);
+      
+      const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, uid);
+      batch.set(schoolStudentRef, { id: uid });
+      
+      await batch.commit();
+      
+      toast({
+        title: 'Estudiante Creado',
+        description: 'La cuenta y el perfil del estudiante han sido creados correctamente.'
       });
       setIsNewStudentDialogOpen(false);
       newStudentForm.reset();
-
-    } catch (error: any) {
-      console.error("Error creating student:", error);
-      if (error.code === 'auth/email-already-in-use') {
-        newStudentForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
-      } else {
-        toast({ variant: 'destructive', title: 'Error al crear estudiante', description: error.message || 'Ocurrió un error inesperado.' });
-      }
-    } finally {
-        if (secondaryApp) {
-            const secondaryAuth = getAuth(secondaryApp);
-            if (secondaryAuth.currentUser) {
-                await signOut(secondaryAuth);
-            }
-            await deleteApp(secondaryApp);
-        }
+  
+    } catch (dbError: any) {
+      console.error("Error al escribir en Firestore:", dbError);
+      toast({ variant: 'destructive', title: 'Error de Base de Datos', description: 'El usuario fue autenticado pero no se pudo guardar su perfil. Contacta a soporte.' });
     }
   };
   
@@ -227,11 +217,14 @@ export default function StudentsPage() {
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
     const batch = writeBatch(firestore);
 
+    // 1. Update student's main profile
     batch.update(studentDocRef, { sectionId: sectionData.id, gradeId: sectionData.gradeId });
     
+    // 2. Ensure student exists in the school's student list
     const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, selectedStudent.id);
     batch.set(schoolStudentRef, { id: selectedStudent.id }, { merge: true });
     
+    // 3. Un-enroll from old section's courses if changed
     if (oldSectionId && oldSectionId !== selectedSection) {
         const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
         for (const course of oldCourses) {
@@ -240,14 +233,15 @@ export default function StudentsPage() {
         }
     }
 
+    // 4. Enroll in new section's courses
     for (const course of coursesInSection) {
         const enrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
-        batch.set(enrollmentRef, { studentId: selectedStudent.id });
+        batch.set(enrollmentRef, { studentId: selectedStudent.id, sectionId: course.sectionId });
     }
 
     try {
         await batch.commit();
-        toast({ title: 'Estudiante Asignado', description: `${selectedStudent.firstName} ha sido inscrito en la nueva sección.` });
+        toast({ title: 'Estudiante Asignado', description: `${selectedStudent.firstName} ha sido inscrito en la nueva sección y sus cursos.` });
     } catch (error) {
         console.error("Error assigning student to section:", error)
         toast({ variant: "destructive", title: "Error de Asignación", description: "No se pudo completar la inscripción. Revisa los permisos." });
