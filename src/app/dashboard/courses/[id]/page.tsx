@@ -57,7 +57,6 @@ interface EnrolledStudent {
 
 interface UserProfile {
   role: Role;
-  schoolId: string;
 }
 
 function PlaceholderTab({ title }: { title: string }) {
@@ -73,15 +72,15 @@ function PlaceholderTab({ title }: { title: string }) {
     )
 }
 
-function StudentListTab({ courseId, schoolId, hasPermission }: { courseId: string, schoolId: string, hasPermission: boolean }) {
+function StudentListTab({ courseId, hasPermission }: { courseId: string, hasPermission: boolean }) {
     const firestore = useFirestore();
 
     const enrolledStudentsRef = useMemoFirebase(() => {
-        if (hasPermission && schoolId && courseId) {
-            return collection(firestore, `schools/${schoolId}/courses/${courseId}/students`);
+        if (hasPermission && courseId) {
+            return collection(firestore, `courses/${courseId}/students`);
         }
         return null;
-    }, [hasPermission, firestore, schoolId, courseId]);
+    }, [hasPermission, firestore, courseId]);
     const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<EnrolledStudent>(enrolledStudentsRef);
 
     const studentIds = React.useMemo(() => {
@@ -155,14 +154,13 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
 
-    const schoolId = userProfile?.schoolId;
 
     const courseRef = useMemoFirebase(() => {
-        if (schoolId && courseId) {
-            return doc(firestore, `schools/${schoolId}/courses`, courseId);
+        if (courseId) {
+            return doc(firestore, `courses`, courseId);
         }
         return null;
-    }, [firestore, schoolId, courseId]);
+    }, [firestore, courseId]);
     const { data: course, isLoading: isCourseLoading } = useDoc<Course>(courseRef);
 
     const isCoreDataLoading = isAuthLoading || isProfileLoading || isCourseLoading;
@@ -220,7 +218,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                             <CardDescription>Lista de estudiantes que participan en este curso.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                           <StudentListTab courseId={course.id} schoolId={userProfile.schoolId} hasPermission={canViewStudents} />
+                           <StudentListTab courseId={course.id} hasPermission={canViewStudents} />
                         </CardContent>
                     </Card>
                 </TabsContent>

@@ -26,7 +26,6 @@ interface TeacherProfile {
   lastName: string;
   email: string;
   role: string;
-  schoolId: string;
   photoURL?: string;
 }
 
@@ -36,17 +35,17 @@ interface Course {
     sectionName?: string;
 }
 
-function TeacherCourses({ teacherId, schoolId }: { teacherId: string, schoolId: string }) {
+function TeacherCourses({ teacherId }: { teacherId: string }) {
     const firestore = useFirestore();
     const teacherCoursesQuery = useMemoFirebase(() => {
-        if (schoolId && teacherId) {
+        if (teacherId) {
             return query(
-                collection(firestore, `schools/${schoolId}/courses`),
+                collection(firestore, `courses`),
                 where('teacherId', '==', teacherId)
             );
         }
         return null;
-    }, [firestore, schoolId, teacherId]);
+    }, [firestore, teacherId]);
 
     const { data: courses, isLoading } = useCollection<Course>(teacherCoursesQuery);
 
@@ -150,10 +149,6 @@ export default function TeacherProfilePage({ params }: { params: { id: string } 
                         <UserIcon className="h-4 w-4" />
                         <span>ID: {teacher.id}</span>
                     </div>
-                     <div className="flex items-center gap-3">
-                        <School className="h-4 w-4" />
-                        <span>Escuela ID: {teacher.schoolId}</span>
-                    </div>
                 </CardContent>
                 <CardFooter>
                     <Button className="w-full" onClick={() => setShowCourses(!showCourses)}>
@@ -164,7 +159,7 @@ export default function TeacherProfilePage({ params }: { params: { id: string } 
 
             <div className="lg:col-span-2">
                 {showCourses && (
-                    <TeacherCourses teacherId={teacher.id} schoolId={teacher.schoolId} />
+                    <TeacherCourses teacherId={teacher.id} />
                 )}
             </div>
         </div>

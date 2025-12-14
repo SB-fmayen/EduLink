@@ -90,37 +90,37 @@ const newStudentFormSchema = z.object({
 export default function StudentsPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const schoolId = 'default-school-id'; // Hardcoded schoolId
 
   const userDocRef = useMemoFirebase(() => (user ? doc(firestore, `users/${user.uid}`) : null), [user, firestore]);
-  const { data: userData } = useDoc<{ schoolId: string; role: Role }>(userDocRef);
-  const schoolId = userData?.schoolId;
+  const { data: userData } = useDoc<{ role: Role }>(userDocRef);
   const userRole = userData?.role;
 
   const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('all');
 
   const studentsQuery = useMemoFirebase(() => {
-    if (schoolId && userRole === 'admin') {
-      return query(collection(firestore, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'student'));
+    if (userRole === 'admin') {
+      return query(collection(firestore, 'users'), where('role', '==', 'student'));
     }
     return null;
-  }, [schoolId, userRole, firestore]);
+  }, [userRole, firestore]);
   const { data: allStudents, isLoading: isProfilesLoading } = useCollection<UserData>(studentsQuery);
 
   const teacherCoursesQuery = useMemoFirebase(() => {
-    if (userRole === 'teacher' && user && schoolId) {
-      return query(collection(firestore, `schools/${schoolId}/courses`), where('teacherId', '==', user.uid));
+    if (userRole === 'teacher' && user) {
+      return query(collection(firestore, `courses`), where('teacherId', '==', user.uid));
     }
     return null;
-  }, [schoolId, userRole, user, firestore]);
+  }, [userRole, user, firestore]);
   const { data: teacherCourses } = useCollection<CourseData>(teacherCoursesQuery);
 
-  const allSectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
+  const allSectionsRef = useMemoFirebase(() => collection(firestore, `sections`), [firestore]);
   const { data: allSections } = useCollection<SectionData>(allSectionsRef);
 
-  const gradesRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null), [schoolId, firestore]);
+  const gradesRef = useMemoFirebase(() => (collection(firestore, `grades`)), [firestore]);
   const { data: grades } = useCollection<GradeData>(gradesRef);
 
-  const coursesRef = useMemoFirebase(() => (schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null), [schoolId, firestore]);
+  const coursesRef = useMemoFirebase(() => (collection(firestore, `courses`)), [firestore]);
   const { data: courses } = useCollection<CourseData>(coursesRef);
 
   const [isAssignDialogOpen, setIsAssignDialogOpen] = React.useState(false);
@@ -147,10 +147,6 @@ export default function StudentsPage() {
   });
 
   const onNewStudentSubmit = async (values: z.infer<typeof newStudentFormSchema>) => {
-    if (!schoolId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'No se ha podido identificar la escuela del administrador.' });
-      return;
-    }
   
     try {
       const { uid, error: authError } = await createUserAction(values.email, values.password);
@@ -181,7 +177,7 @@ export default function StudentsPage() {
       const userDocRef = doc(firestore, 'users', uid);
       batch.set(userDocRef, userPayload);
       
-      const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, uid);
+      const schoolStudentRef = doc(firestore, `students`, uid);
       batch.set(schoolStudentRef, { id: uid });
       
       await batch.commit();
@@ -200,7 +196,7 @@ export default function StudentsPage() {
   };
   
   const handleAssignToSection = async () => {
-    if (!selectedStudent || !selectedSection || !courses || !allSections || !schoolId) {
+    if (!selectedStudent || !selectedSection || !courses || !allSections) {
       toast({ variant: 'destructive', title: 'Error', description: 'Por favor selecciona un estudiante y una sección.' });
       return;
     }
@@ -220,22 +216,18 @@ export default function StudentsPage() {
     // 1. Update student's main profile
     batch.update(studentDocRef, { sectionId: sectionData.id, gradeId: sectionData.gradeId });
     
-    // 2. Ensure student exists in the school's student list
-    const schoolStudentRef = doc(firestore, `schools/${schoolId}/students`, selectedStudent.id);
-    batch.set(schoolStudentRef, { id: selectedStudent.id }, { merge: true });
-    
-    // 3. Un-enroll from old section's courses if changed
+    // 2. Un-enroll from old section's courses if changed
     if (oldSectionId && oldSectionId !== selectedSection) {
         const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
         for (const course of oldCourses) {
-            const oldEnrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
+            const oldEnrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
             batch.delete(oldEnrollmentRef);
         }
     }
 
-    // 4. Enroll in new section's courses
+    // 3. Enroll in new section's courses
     for (const course of coursesInSection) {
-        const enrollmentRef = doc(firestore, `schools/${schoolId}/courses/${course.id}/students`, selectedStudent.id);
+        const enrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
         batch.set(enrollmentRef, { studentId: selectedStudent.id, sectionId: course.sectionId });
     }
 
@@ -260,7 +252,7 @@ export default function StudentsPage() {
   
   React.useEffect(() => {
     async function fetchTeacherStudentIds() {
-        if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0 || !schoolId || !firestore) {
+        if (userRole !== 'teacher' || !teacherCourses || teacherCourses.length === 0 || !firestore) {
           setIsLoadingTeacherStudentIds(false);
           setTeacherStudentIds([]);
           return;
@@ -270,7 +262,7 @@ export default function StudentsPage() {
         const studentIds = new Set<string>();
         try {
             for (const course of teacherCourses) {
-                const enrollmentsRef = collection(firestore, `schools/${schoolId}/courses/${course.id}/students`);
+                const enrollmentsRef = collection(firestore, `courses/${course.id}/students`);
                 const snapshot = await getDocs(enrollmentsRef);
                 snapshot.forEach(doc => studentIds.add(doc.data().studentId));
             }
@@ -283,7 +275,7 @@ export default function StudentsPage() {
         }
     }
     fetchTeacherStudentIds();
-  }, [userRole, teacherCourses, firestore, schoolId]);
+  }, [userRole, teacherCourses, firestore]);
 
 
   const teacherStudentsQuery = useMemoFirebase(() => {

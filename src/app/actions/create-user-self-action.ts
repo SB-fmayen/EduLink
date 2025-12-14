@@ -62,7 +62,7 @@ export async function createUserSelfAction(
     await firestore.collection('users').doc(userRecord.uid).set(userPayload);
     
     // Also create the reference in the school's subcollection
-    await firestore.collection('schools').doc('default-school-id').collection('students').doc(userRecord.uid).set({ id: userRecord.uid });
+    await firestore.collection('students').doc(userRecord.uid).set({ id: userRecord.uid });
 
     return { uid: userRecord.uid };
   } catch (error: any) {

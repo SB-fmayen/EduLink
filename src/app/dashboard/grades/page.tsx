@@ -38,7 +38,6 @@ import { toast } from '@/hooks/use-toast';
 // --- Interfaces ---
 interface UserProfile {
   role: Role;
-  schoolId: string;
 }
 
 interface Course {
@@ -78,23 +77,23 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
 
     // 1. Obtener los cursos del profesor
     const teacherCoursesQuery = useMemoFirebase(() => {
-        if (profile.schoolId && user) {
+        if (user) {
             return query(
-                collection(firestore, `schools/${profile.schoolId}/courses`),
+                collection(firestore, `courses`),
                 where('teacherId', '==', user.uid)
             );
         }
         return null;
-    }, [firestore, user, profile.schoolId]);
+    }, [firestore, user]);
     const { data: teacherCourses, isLoading: isLoadingCourses } = useCollection<Course>(teacherCoursesQuery);
 
     // 2. Obtener estudiantes del curso seleccionado
     const enrolledStudentsRef = useMemoFirebase(() => {
-        if (selectedCourseId && profile.schoolId) {
-            return collection(firestore, `schools/${profile.schoolId}/courses/${selectedCourseId}/students`);
+        if (selectedCourseId) {
+            return collection(firestore, `courses/${selectedCourseId}/students`);
         }
         return null;
-    }, [selectedCourseId, profile.schoolId, firestore]);
+    }, [selectedCourseId, firestore]);
     const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<EnrolledStudent>(enrolledStudentsRef);
 
     const studentIds = React.useMemo(() => enrolledStudents?.map(s => s.studentId) || [], [enrolledStudents]);
@@ -115,7 +114,7 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
     };
     
     const handleSaveGrades = () => {
-        if (!selectedCourseId || !profile.schoolId) return;
+        if (!selectedCourseId) return;
 
         Object.entries(grades).forEach(([studentId, score]) => {
             if (score === '' || typeof score !== 'number') return;
@@ -123,7 +122,7 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
             // Aquí definiríamos una referencia única para la calificación, por ejemplo, por trimestre.
             // Para este ejemplo, usaremos un ID simple.
             const gradeId = `${selectedCourseId}-${studentId}-term1`;
-            const gradeRef = doc(firestore, `schools/${profile.schoolId}/grades`, gradeId);
+            const gradeRef = doc(firestore, `grades`, gradeId);
 
             const gradeData = {
                 score,
@@ -274,5 +273,3 @@ export default function GradesPage() {
         </div>
     );
 }
-
-    

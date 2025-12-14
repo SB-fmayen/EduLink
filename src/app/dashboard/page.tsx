@@ -19,7 +19,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 // --- Interfaces para los datos ---
 interface UserProfile {
   role: Role;
-  schoolId: string;
   firstName: string;
   lastName: string;
 }
@@ -48,14 +47,13 @@ interface GradeData {
 
 interface CourseCardProps {
   courseId: string;
-  schoolId: string;
 }
 
 // --- Componente CourseCard ---
-function CourseCard({ courseId, schoolId }: CourseCardProps) {
+function CourseCard({ courseId }: CourseCardProps) {
   const firestore = useFirestore();
 
-  const courseRef = useMemoFirebase(() => schoolId ? doc(firestore, `schools/${schoolId}/courses`, courseId) : null, [firestore, schoolId, courseId]);
+  const courseRef = useMemoFirebase(() => doc(firestore, `courses`, courseId), [firestore, courseId]);
   const { data: course, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
   
   const courseImage = PlaceHolderImages.find(img => img.id === 'course-placeholder');
@@ -128,9 +126,8 @@ function AdminParentDashboard({ profile }: { profile: UserProfile }) {
   const firestore = useFirestore();
 
   const studentsQuery = useMemoFirebase(() => {
-    if (!profile.schoolId) return null;
-    return query(collection(firestore, 'users'), where('schoolId', '==', profile.schoolId), where('role', '==', 'student'));
-  }, [profile.schoolId, firestore]);
+    return query(collection(firestore, 'users'), where('role', '==', 'student'));
+  }, [firestore]);
   const { data: students, isLoading: isLoadingStudents } = useCollection(studentsQuery);
 
   return (
@@ -215,14 +212,14 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
 
   // Lógica para profesores
   const teacherCoursesQuery = useMemoFirebase(() => {
-    if (profile.role === 'teacher' && profile.schoolId) {
+    if (profile.role === 'teacher') {
       return query(
-        collection(firestore, `schools/${profile.schoolId}/courses`),
+        collection(firestore, `courses`),
         where('teacherId', '==', user.uid)
       );
     }
     return null;
-  }, [firestore, user, profile.role, profile.schoolId]);
+  }, [firestore, user, profile.role]);
   const { data: teacherCourses, isLoading: isLoadingTeacherCourses } = useCollection<Course>(teacherCoursesQuery);
 
 
@@ -259,7 +256,7 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {coursesToDisplay && coursesToDisplay.length > 0 ? (
-            coursesToDisplay.map(id => <CourseCard key={id} courseId={id} schoolId={profile.schoolId} />)
+            coursesToDisplay.map(id => <CourseCard key={id} courseId={id} />)
           ) : (
              <div className="col-span-full text-center py-10">
                 <p className="text-muted-foreground">

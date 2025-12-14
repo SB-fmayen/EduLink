@@ -47,10 +47,9 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
-import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection, doc, serverTimestamp, query, where, getDocs, documentId } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
@@ -94,7 +93,6 @@ interface UserData {
     firstName: string;
     lastName: string;
     role: Role;
-    schoolId: string;
 }
 
 
@@ -113,13 +111,9 @@ const subjectFormSchema = z.object({
 
 function CoursesManager() {
   const firestore = useFirestore();
-  const { user } = useUser();
-  
-  const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-  const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
-  const schoolId = userData?.schoolId;
+  const schoolId = 'default-school-id'; // Hardcoded school ID
 
-  const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
+  const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `subjects`) : null, [schoolId, firestore]);
   const { data: subjects, isLoading } = useCollection<SubjectData>(subjectsRef);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -149,8 +143,8 @@ function CoursesManager() {
   };
 
   const handleDeleteAttempt = async (subject: SubjectData) => {
-    if (!schoolId || !firestore) return;
-    const coursesRef = collection(firestore, 'schools', schoolId, 'courses');
+    if (!firestore) return;
+    const coursesRef = collection(firestore, 'courses');
     const q = query(coursesRef, where('subjectId', '==', subject.id));
     const snapshot = await getDocs(q);
 
@@ -166,8 +160,8 @@ function CoursesManager() {
   };
 
   const executeDelete = () => {
-    if (!subjectToDelete || !schoolId || !firestore) return;
-    const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', subjectToDelete.id);
+    if (!subjectToDelete || !firestore) return;
+    const subjectDocRef = doc(firestore, 'subjects', subjectToDelete.id);
     deleteDocumentNonBlocking(subjectDocRef);
     toast({
         title: "Asignatura Eliminada",
@@ -177,16 +171,16 @@ function CoursesManager() {
   };
 
   const onSubmit = (values: z.infer<typeof subjectFormSchema>) => {
-    if (!schoolId || !subjectsRef || !firestore) return;
+    if (!subjectsRef || !firestore) return;
     if (editingSubject) {
-      const subjectDocRef = doc(firestore, 'schools', schoolId, 'subjects', editingSubject.id);
+      const subjectDocRef = doc(firestore, 'subjects', editingSubject.id);
       updateDocumentNonBlocking(subjectDocRef, values);
        toast({
         title: "Asignatura Actualizada",
         description: "La información de la asignatura ha sido actualizada."
       });
     } else {
-      addDocumentNonBlocking(subjectsRef, { ...values, schoolId, createdAt: serverTimestamp() });
+      addDocumentNonBlocking(subjectsRef, { ...values, createdAt: serverTimestamp() });
        toast({
         title: "Asignatura Creada",
         description: "La nueva asignatura ha sido creada correctamente."
@@ -311,13 +305,9 @@ const gradeFormSchema = z.object({
 
 function GradesManager() {
   const firestore = useFirestore();
-  const { user } = useUser();
-  
-  const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-  const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
-  const schoolId = userData?.schoolId;
+  const schoolId = 'default-school-id'; // Hardcoded school ID
 
-  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
+  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `grades`) : null, [schoolId, firestore]);
   const { data: grades, isLoading } = useCollection<GradeData>(gradesRef);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -347,8 +337,8 @@ function GradesManager() {
   };
 
   const handleDeleteAttempt = async (grade: GradeData) => {
-    if (!schoolId || !firestore) return;
-    const sectionsRef = collection(firestore, 'schools', schoolId, 'sections');
+    if (!firestore) return;
+    const sectionsRef = collection(firestore, 'sections');
     const q = query(sectionsRef, where('gradeId', '==', grade.id));
     const snapshot = await getDocs(q);
 
@@ -364,8 +354,8 @@ function GradesManager() {
   };
 
   const executeDelete = () => {
-    if (!gradeToDelete || !schoolId || !firestore) return;
-    const gradeDocRef = doc(firestore, 'schools', schoolId, 'grades', gradeToDelete.id);
+    if (!gradeToDelete || !firestore) return;
+    const gradeDocRef = doc(firestore, 'grades', gradeToDelete.id);
     deleteDocumentNonBlocking(gradeDocRef);
     toast({
         title: "Grado Eliminado",
@@ -375,16 +365,16 @@ function GradesManager() {
   };
 
   const onSubmit = (values: z.infer<typeof gradeFormSchema>) => {
-    if (!schoolId || !gradesRef || !firestore) return;
+    if (!gradesRef || !firestore) return;
     if (editingGrade) {
-      const gradeDocRef = doc(firestore, 'schools', schoolId, 'grades', editingGrade.id);
+      const gradeDocRef = doc(firestore, 'grades', editingGrade.id);
       updateDocumentNonBlocking(gradeDocRef, values);
        toast({
         title: "Grado Actualizado",
         description: "La información del grado ha sido actualizada."
       });
     } else {
-      addDocumentNonBlocking(gradesRef, { ...values, schoolId, createdAt: serverTimestamp() });
+      addDocumentNonBlocking(gradesRef, { ...values, createdAt: serverTimestamp() });
        toast({
         title: "Grado Creado",
         description: "El nuevo grado ha sido creado correctamente."
@@ -517,38 +507,26 @@ const courseAssignmentFormSchema = z.object({
 
 function SectionsManager() {
     const firestore = useFirestore();
-    const { user } = useUser();
-    
-    const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-    const { data: userData } = useDoc<{ schoolId: string }>(userDocRef);
-    const schoolId = userData?.schoolId;
+    const schoolId = 'default-school-id'; // Hardcoded school ID
 
     // Data hooks
-    const sectionsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/sections`) : null, [schoolId, firestore]);
+    const sectionsRef = useMemoFirebase(() => collection(firestore, `sections`), [firestore]);
     const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
     
-    const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/grades`) : null, [schoolId, firestore]);
+    const gradesRef = useMemoFirebase(() => collection(firestore, `grades`), [firestore]);
     const { data: grades } = useCollection<GradeData>(gradesRef);
 
-    const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/subjects`) : null, [schoolId, firestore]);
+    const subjectsRef = useMemoFirebase(() => collection(firestore, `subjects`), [firestore]);
     const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
-    // Get teacher IDs from the new subcollection
-    const schoolTeachersRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/teachers`) : null, [schoolId, firestore]);
-    const { data: teacherRefs } = useCollection<{id: string}>(schoolTeachersRef);
-    const teacherIds = React.useMemo(() => teacherRefs?.map(t => t.id) || [], [teacherRefs]);
-    
-    // Get teacher profiles from the main users collection
+    // Get teacher profiles from the main users collection with role 'teacher'
     const teachersQuery = useMemoFirebase(() => {
-        if (teacherIds.length > 0) {
-            return query(collection(firestore, 'users'), where(documentId(), 'in', teacherIds));
-        }
-        return null;
-    }, [teacherIds, firestore]);
+        return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
+    }, [firestore]);
     const { data: teachers } = useCollection<UserData>(teachersQuery);
 
 
-    const coursesRef = useMemoFirebase(() => schoolId ? collection(firestore, `schools/${schoolId}/courses`) : null, [schoolId, firestore]);
+    const coursesRef = useMemoFirebase(() => collection(firestore, `courses`), [firestore]);
     const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
 
     // State for dialogs
@@ -604,7 +582,7 @@ function SectionsManager() {
     };
 
     const handleDeleteSectionAttempt = async (section: SectionData) => {
-        if (!schoolId || !coursesRef) return;
+        if (!coursesRef) return;
         const coursesQuery = query(coursesRef!, where('sectionId', '==', section.id));
         const snapshot = await getDocs(coursesQuery);
         
@@ -620,15 +598,15 @@ function SectionsManager() {
     };
     
     const executeDeleteSection = () => {
-        if (!sectionToDelete || !schoolId || !firestore) return;
-        const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', sectionToDelete.id);
+        if (!sectionToDelete || !firestore) return;
+        const sectionDocRef = doc(firestore, 'sections', sectionToDelete.id);
         deleteDocumentNonBlocking(sectionDocRef);
         toast({ title: "Sección Eliminada", description: "La sección ha sido eliminada correctamente." });
         setSectionToDelete(null);
     };
 
     const onSectionSubmit = (values: z.infer<typeof sectionFormSchema>) => {
-        if (!schoolId || !grades || !sectionsRef) return;
+        if (!grades || !sectionsRef) return;
 
         const grade = grades.find(g => g.id === values.gradeId);
         if (!grade) {
@@ -642,11 +620,11 @@ function SectionsManager() {
         };
 
         if (editingSection) {
-            const sectionDocRef = doc(firestore, 'schools', schoolId, 'sections', editingSection.id);
+            const sectionDocRef = doc(firestore, 'sections', editingSection.id);
             updateDocumentNonBlocking(sectionDocRef, dataToSave);
             toast({ title: "Sección Actualizada" });
         } else {
-            addDocumentNonBlocking(sectionsRef, { ...dataToSave, schoolId, createdAt: serverTimestamp() });
+            addDocumentNonBlocking(sectionsRef, { ...dataToSave, createdAt: serverTimestamp() });
             toast({ title: "Sección Creada" });
         }
         setIsSectionDialogOpen(false);
@@ -660,7 +638,7 @@ function SectionsManager() {
     };
 
     const onCourseAssignmentSubmit = (values: z.infer<typeof courseAssignmentFormSchema>) => {
-        if (!schoolId || !managingCoursesForSection || !coursesRef || !subjects || !teachers) return;
+        if (!managingCoursesForSection || !coursesRef || !subjects || !teachers) return;
         
         const subject = subjects.find(s => s.id === values.subjectId);
         const teacher = teachers.find(t => t.id === values.teacherId);
@@ -676,11 +654,10 @@ function SectionsManager() {
             sectionName: managingCoursesForSection.name,
             subjectName: subject.name,
             teacherName: `${teacher.firstName} ${teacher.lastName}`,
-            schoolId,
         };
 
         if (editingCourse) {
-            const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', editingCourse.id);
+            const courseDocRef = doc(firestore, 'courses', editingCourse.id);
             updateDocumentNonBlocking(courseDocRef, dataToSave);
             toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
 
@@ -696,8 +673,8 @@ function SectionsManager() {
     };
     
     const executeDeleteCourse = () => {
-        if (!courseToDeleteId || !schoolId || !firestore) return;
-        const courseDocRef = doc(firestore, 'schools', schoolId, 'courses', courseToDeleteId);
+        if (!courseToDeleteId || !firestore) return;
+        const courseDocRef = doc(firestore, 'courses', courseToDeleteId);
         deleteDocumentNonBlocking(courseDocRef);
         toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección." });
         setCourseToDeleteId(null);
@@ -839,8 +816,7 @@ function SectionsManager() {
                                                     {teachers?.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
-                                            {!teachers && teacherIds.length > 0 && <p className="text-sm text-muted-foreground">Cargando perfiles de profesor...</p>}
-                                            {teacherIds.length === 0 && <p className="text-sm text-muted-foreground">No hay profesores en esta escuela.</p>}
+                                            {!teachers && <p className="text-sm text-muted-foreground">No hay profesores registrados.</p>}
                                             <FormMessage />
                                         </FormItem>
                                     )} />

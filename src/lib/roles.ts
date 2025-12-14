@@ -15,12 +15,6 @@ export const menuItems: NavItem[] = [
     roles: ['admin', 'teacher', 'student', 'parent'],
   },
   {
-    href: '/dashboard/schools',
-    label: 'Escuelas',
-    icon: 'School',
-    roles: ['admin'],
-  },
-  {
     href: '/dashboard/academics',
     label: 'Académico',
     icon: 'BookOpen',
@@ -61,12 +55,6 @@ export const menuItems: NavItem[] = [
     label: 'Comunicación',
     icon: 'MessageSquare',
     roles: ['admin', 'teacher', 'student', 'parent'],
-  },
-  {
-    href: '/dashboard/recycle-bin',
-    label: 'Papelera',
-    icon: 'Trash2',
-    roles: ['admin'],
   },
   {
     href: '/dashboard/settings',

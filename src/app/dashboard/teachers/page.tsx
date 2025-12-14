@@ -53,18 +53,11 @@ interface UserData {
   lastName: string;
   email: string;
   role: Role;
-  schoolId: string;
-}
-
-interface SchoolData {
-  id: string;
-  name: string;
 }
 
 const teacherFormSchema = z.object({
   firstName: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
   lastName: z.string().min(2, { message: 'El apellido debe tener al menos 2 caracteres.' }),
-  schoolId: z.string({ required_error: 'Debe seleccionar una escuela.'}).min(1, 'Debe seleccionar una escuela.'),
 });
 
 const newTeacherFormSchema = z.object({
@@ -80,34 +73,17 @@ export default function TeachersPage() {
   const router = useRouter();
 
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
-  const { data: userData } = useDoc<{ schoolId: string, role: Role }>(userDocRef);
+  const { data: userData } = useDoc<{ role: Role }>(userDocRef);
   const userRole = userData?.role;
-  const adminSchoolId = userData?.schoolId;
 
   const teachersQuery = useMemoFirebase(() => {
-    if (userRole === 'admin' && adminSchoolId) {
-      return query(collection(firestore, 'users'), where('schoolId', '==', adminSchoolId), where('role', '==', 'teacher'));
-    }
-    if (userRole === 'admin' && !adminSchoolId) { 
+    if (userRole === 'admin') { 
       return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }
     return null;
-  }, [firestore, userRole, adminSchoolId]);
+  }, [firestore, userRole]);
 
   const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
-
-  const schoolsRef = useMemoFirebase(() => collection(firestore, 'schools'), [firestore]);
-  const activeSchoolsQuery = useMemoFirebase(() => query(schoolsRef, where('status', '==', 'active')), [schoolsRef]);
-  const { data: schools } = useCollection<SchoolData>(activeSchoolsQuery);
-
-  const schoolsMap = React.useMemo(() => {
-    if (!schools) return {};
-    return schools.reduce((acc, school) => {
-        acc[school.id] = school.name;
-        return acc;
-    }, {} as Record<string, string>);
-  }, [schools]);
-
 
   const [isModifyDialogOpen, setIsModifyDialogOpen] = React.useState(false);
   const [isNewTeacherDialogOpen, setIsNewTeacherDialogOpen] = React.useState(false);
@@ -119,7 +95,6 @@ export default function TeachersPage() {
     defaultValues: {
       firstName: '',
       lastName: '',
-      schoolId: '',
     },
   });
 
@@ -138,7 +113,6 @@ export default function TeachersPage() {
       modifyForm.reset({
         firstName: selectedTeacher.firstName,
         lastName: selectedTeacher.lastName,
-        schoolId: selectedTeacher.schoolId,
       });
     }
   }, [selectedTeacher, modifyForm]);
@@ -156,19 +130,8 @@ export default function TeachersPage() {
     if (!selectedTeacher) return;
 
     const teacherDocRef = doc(firestore, 'users', selectedTeacher.id);
-    const oldSchoolId = selectedTeacher.schoolId;
-    const newSchoolId = values.schoolId;
-
     const batch = writeBatch(firestore);
     batch.update(teacherDocRef, values);
-
-    if (oldSchoolId && oldSchoolId !== newSchoolId) {
-        const oldTeacherRef = doc(firestore, `schools/${oldSchoolId}/teachers`, selectedTeacher.id);
-        batch.delete(oldTeacherRef);
-    }
-    
-    const newTeacherRef = doc(firestore, `schools/${newSchoolId}/teachers`, selectedTeacher.id);
-    batch.set(newTeacherRef, { id: selectedTeacher.id }, { merge: true });
 
     try {
         await batch.commit();
@@ -185,11 +148,6 @@ export default function TeachersPage() {
   };
 
   const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
-    if (!adminSchoolId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'No se puede crear el usuario. Falta información de la escuela del administrador.' });
-      return;
-    }
-  
     try {
       // 1. Llama a la Server Action para crear el usuario en Firebase Auth
       const { uid, error: authError } = await createUserAction(values.email, values.password);
@@ -210,19 +168,16 @@ export default function TeachersPage() {
       
       // 2. Si la autenticación es exitosa, crea los documentos en Firestore
       const batch = writeBatch(firestore);
-      const userPayload: Omit<UserData, 'id'> = {
+      const userPayload: Omit<UserData, 'id' | 'schoolId'> & {role: 'teacher', schoolId: string} = {
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
         role: 'teacher',
-        schoolId: adminSchoolId,
+        schoolId: 'default-school-id',
       };
       
       const userDocRef = doc(firestore, 'users', uid);
       batch.set(userDocRef, userPayload);
-      
-      const schoolTeacherRef = doc(firestore, `schools/${adminSchoolId}/teachers`, uid);
-      batch.set(schoolTeacherRef, { id: uid });
       
       await batch.commit();
       
@@ -263,7 +218,6 @@ export default function TeachersPage() {
               <TableRow>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Escuela Asignada</TableHead>
                 <TableHead>Rol</TableHead>
                 <TableHead>
                   <span className="sr-only">Acciones</span>
@@ -273,7 +227,7 @@ export default function TeachersPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
+                  <TableCell colSpan={4} className="text-center">
                     Cargando profesores...
                   </TableCell>
                 </TableRow>
@@ -284,9 +238,6 @@ export default function TeachersPage() {
                       {teacher.firstName} {teacher.lastName}
                     </TableCell>
                     <TableCell>{teacher.email}</TableCell>
-                    <TableCell>
-                      {schoolsMap[teacher.schoolId] || <span className="text-muted-foreground">No asignada</span>}
-                    </TableCell>
                     <TableCell>
                       <Badge variant="default">{teacher.role}</Badge>
                     </TableCell>
@@ -312,7 +263,7 @@ export default function TeachersPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
+                  <TableCell colSpan={4} className="text-center">
                     No hay profesores registrados.
                   </TableCell>
                 </TableRow>
@@ -327,7 +278,7 @@ export default function TeachersPage() {
             <DialogHeader>
                 <DialogTitle>Modificar datos del Profesor</DialogTitle>
                 <DialogDescription>
-                    Actualiza la información y la escuela asignada para {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
+                    Actualiza la información para {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
                 </DialogDescription>
             </DialogHeader>
             <Form {...modifyForm}>
@@ -346,22 +297,6 @@ export default function TeachersPage() {
                             <FormItem><FormLabel>Apellido</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                         )}
                     />
-                    <FormField
-                        control={modifyForm.control}
-                        name="schoolId"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Escuela</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una escuela" /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                        {schools?.map((school) => (<SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>))}
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
                     <DialogFooter>
                         <Button type="submit">Guardar Cambios</Button>
                     </DialogFooter>
@@ -375,7 +310,7 @@ export default function TeachersPage() {
           <DialogHeader>
             <DialogTitle>Crear Nuevo Profesor</DialogTitle>
             <DialogDescription>
-              Introduce los datos para crear una nueva cuenta de profesor. El profesor será asignado a tu escuela.
+              Introduce los datos para crear una nueva cuenta de profesor.
             </DialogDescription>
           </DialogHeader>
           <Form {...newTeacherForm}>
