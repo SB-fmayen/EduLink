@@ -324,8 +324,10 @@ function GradesManager() {
   });
 
   React.useEffect(() => {
-    form.reset({ name: editingGrade?.name || '' });
-  }, [editingGrade, form]);
+    if (isDialogOpen) {
+        form.reset({ name: editingGrade?.name || '' });
+    }
+  }, [editingGrade, isDialogOpen, form]);
 
   const handleEditClick = (grade: GradeData) => {
     setEditingGrade(grade);
@@ -334,6 +336,7 @@ function GradesManager() {
 
   const handleCreateClick = () => {
     setEditingGrade(null);
+    form.reset({ name: '' });
     setIsDialogOpen(true);
   };
 
