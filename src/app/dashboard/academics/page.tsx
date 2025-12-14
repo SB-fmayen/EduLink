@@ -111,9 +111,8 @@ const subjectFormSchema = z.object({
 
 function CoursesManager() {
   const firestore = useFirestore();
-  const schoolId = 'default-school-id'; // Hardcoded school ID
 
-  const subjectsRef = useMemoFirebase(() => schoolId ? collection(firestore, `subjects`) : null, [schoolId, firestore]);
+  const subjectsRef = useMemoFirebase(() => collection(firestore, `subjects`), [firestore]);
   const { data: subjects, isLoading } = useCollection<SubjectData>(subjectsRef);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -129,8 +128,10 @@ function CoursesManager() {
   });
 
   React.useEffect(() => {
-    form.reset({ name: editingSubject?.name || '' });
-  }, [editingSubject, form]);
+    if (isDialogOpen) {
+      form.reset({ name: editingSubject?.name || '' });
+    }
+  }, [editingSubject, isDialogOpen, form]);
 
   const handleEditClick = (subject: SubjectData) => {
     setEditingSubject(subject);
@@ -139,6 +140,7 @@ function CoursesManager() {
 
   const handleCreateClick = () => {
     setEditingSubject(null);
+    form.reset({ name: '' });
     setIsDialogOpen(true);
   };
 
@@ -305,9 +307,8 @@ const gradeFormSchema = z.object({
 
 function GradesManager() {
   const firestore = useFirestore();
-  const schoolId = 'default-school-id'; // Hardcoded school ID
 
-  const gradesRef = useMemoFirebase(() => schoolId ? collection(firestore, `grades`) : null, [schoolId, firestore]);
+  const gradesRef = useMemoFirebase(() => collection(firestore, `grades`), [firestore]);
   const { data: grades, isLoading } = useCollection<GradeData>(gradesRef);
 
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -507,7 +508,6 @@ const courseAssignmentFormSchema = z.object({
 
 function SectionsManager() {
     const firestore = useFirestore();
-    const schoolId = 'default-school-id'; // Hardcoded school ID
 
     // Data hooks
     const sectionsRef = useMemoFirebase(() => collection(firestore, `sections`), [firestore]);
