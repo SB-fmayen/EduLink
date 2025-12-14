@@ -696,9 +696,13 @@ function SectionsManager() {
     const filteredSections = React.useMemo(() => {
         if (!allSections) return [];
         return allSections
+            .map(section => ({
+                ...section,
+                gradeName: grades?.find(g => g.id === section.gradeId)?.name || 'N/A'
+            }))
             .filter(section => gradeFilter === 'all' || section.gradeId === gradeFilter)
             .filter(section => section.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [allSections, gradeFilter, searchTerm]);
+    }, [allSections, grades, gradeFilter, searchTerm]);
 
     return (
         <>
