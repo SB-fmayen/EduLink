@@ -3,7 +3,6 @@
 import { useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Logo } from '@/components/logo';
 
 export default function AuthLayout({
   children,
@@ -22,7 +21,7 @@ export default function AuthLayout({
   if (isUserLoading || user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Logo />
+        <div className="loader"></div>
       </div>
     );
   }
