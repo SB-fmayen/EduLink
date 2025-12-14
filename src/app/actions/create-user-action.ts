@@ -1,7 +1,7 @@
 'use server';
 
 import { getAuth } from 'firebase-admin/auth';
-import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
+import { initializeApp, getApps, App, cert } from 'firebase-admin/app';
 
 /**
  * Initializes the Firebase Admin app, ensuring it's only done once.
@@ -9,12 +9,22 @@ import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/
  * @returns {App} The initialized Firebase Admin App.
  */
 function initializeAdminApp(): App {
-  if (getApps().length === 0) {
-    return initializeApp({
-        credential: applicationDefault()
-    });
+  if (getApps().length > 0) {
+    return getApps()[0];
   }
-  return getApps()[0];
+
+  const credentialJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (!credentialJson) {
+    throw new Error(
+      "La variable de entorno GOOGLE_APPLICATION_CREDENTIALS_JSON no está configurada. " +
+      "Por favor, copia el contenido de tu archivo JSON de credenciales de servicio en la variable " +
+      "dentro de tu archivo '.env.local'."
+    );
+  }
+
+  return initializeApp({
+    credential: cert(JSON.parse(credentialJson)),
+  });
 }
 
 /**
