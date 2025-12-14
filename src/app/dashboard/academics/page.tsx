@@ -74,7 +74,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Role } from '@/lib/roles';
-import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Search } from 'lucide-react';
 
 
 interface CourseData {
@@ -127,14 +127,9 @@ function CoursesManager() {
     defaultValues: { name: '' },
   });
 
-  React.useEffect(() => {
-    if (isDialogOpen) {
-      form.reset({ name: editingSubject?.name || '' });
-    }
-  }, [editingSubject, isDialogOpen, form]);
-
   const handleEditClick = (subject: SubjectData) => {
     setEditingSubject(subject);
+    form.reset({ name: subject.name });
     setIsDialogOpen(true);
   };
 
@@ -323,14 +318,9 @@ function GradesManager() {
     defaultValues: { name: '' },
   });
 
-  React.useEffect(() => {
-    if (isDialogOpen) {
-        form.reset({ name: editingGrade?.name || '' });
-    }
-  }, [editingGrade, isDialogOpen, form]);
-
   const handleEditClick = (grade: GradeData) => {
     setEditingGrade(grade);
+    form.reset({ name: grade.name });
     setIsDialogOpen(true);
   };
 
@@ -514,7 +504,7 @@ function SectionsManager() {
 
     // Data hooks
     const sectionsRef = useMemoFirebase(() => collection(firestore, `sections`), [firestore]);
-    const { data: sections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
+    const { data: allSections, isLoading: isLoadingSections } = useCollection<SectionData>(sectionsRef);
     
     const gradesRef = useMemoFirebase(() => collection(firestore, `grades`), [firestore]);
     const { data: grades } = useCollection<GradeData>(gradesRef);
@@ -532,7 +522,7 @@ function SectionsManager() {
     const coursesRef = useMemoFirebase(() => collection(firestore, `courses`), [firestore]);
     const { data: allCourses, isLoading: isLoadingCourses } = useCollection<CourseData>(coursesRef);
 
-    // State for dialogs
+    // State for dialogs and filters
     const [isSectionDialogOpen, setIsSectionDialogOpen] = React.useState(false);
     const [editingSection, setEditingSection] = React.useState<SectionData | null>(null);
     const [isCourseDialogOpen, setIsCourseDialogOpen] = React.useState(false);
@@ -544,6 +534,9 @@ function SectionsManager() {
     const [sectionToDelete, setSectionToDelete] = React.useState<SectionData | null>(null);
     const [courseToDeleteId, setCourseToDeleteId] = React.useState<string | null>(null);
     
+    const [gradeFilter, setGradeFilter] = React.useState<string>('all');
+    const [searchTerm, setSearchTerm] = React.useState<string>('');
+
     // Forms
     const sectionForm = useForm<z.infer<typeof sectionFormSchema>>({
         resolver: zodResolver(sectionFormSchema),
@@ -700,18 +693,51 @@ function SectionsManager() {
         return allCourses.filter(course => course.sectionId === managingCoursesForSection.id);
     }, [managingCoursesForSection, allCourses]);
 
+    const filteredSections = React.useMemo(() => {
+        if (!allSections) return [];
+        return allSections
+            .filter(section => gradeFilter === 'all' || section.gradeId === gradeFilter)
+            .filter(section => section.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [allSections, gradeFilter, searchTerm]);
+
     return (
         <>
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                        <CardTitle>Gestión de Secciones</CardTitle>
-                        <CardDescription>Organiza los grupos de estudiantes dentro de cada grado.</CardDescription>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                            <CardTitle>Gestión de Secciones</CardTitle>
+                            <CardDescription>Organiza los grupos de estudiantes dentro de cada grado.</CardDescription>
+                        </div>
+                        <Button onClick={handleCreateSectionClick}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Crear Sección
+                        </Button>
                     </div>
-                    <Button onClick={handleCreateSectionClick}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Crear Sección
-                    </Button>
+                     <div className="mt-6 flex flex-col md:flex-row gap-4">
+                        <div className="relative w-full md:w-1/2 lg:w-1/3">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar por nombre de sección..."
+                                className="pl-8"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                         <Select value={gradeFilter} onValueChange={setGradeFilter}>
+                            <SelectTrigger className="w-full md:w-auto">
+                                <SelectValue placeholder="Filtrar por grado" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todos los Grados</SelectItem>
+                                {grades?.map((grade) => (
+                                    <SelectItem key={grade.id} value={grade.id}>
+                                        {grade.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -726,8 +752,8 @@ function SectionsManager() {
                         <TableBody>
                             {isLoadingSections ? (
                                 <TableRow><TableCell colSpan={4} className="text-center">Cargando...</TableCell></TableRow>
-                            ) : sections && sections.length > 0 ? (
-                                sections.map((section) => (
+                            ) : filteredSections && filteredSections.length > 0 ? (
+                                filteredSections.map((section) => (
                                     <TableRow key={section.id}>
                                         <TableCell className="font-medium">{section.name}</TableCell>
                                         <TableCell>{section.gradeName || 'N/A'}</TableCell>
@@ -747,7 +773,7 @@ function SectionsManager() {
                                     </TableRow>
                                 ))
                             ) : (
-                                <TableRow><TableCell colSpan={4} className="text-center">No hay secciones registradas.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={4} className="text-center h-24">No se encontraron secciones con los filtros actuales.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
