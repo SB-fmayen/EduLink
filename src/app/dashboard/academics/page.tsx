@@ -499,7 +499,7 @@ interface SectionData {
 }
 
 const sectionFormSchema = z.object({
-  name: z.string().min(1, { message: 'El nombre es requerido.' }),
+  name: z.string({ required_error: 'Debes seleccionar una sección.' }).min(1, { message: 'El nombre es requerido.' }),
   gradeId: z.string({ required_error: 'Debes seleccionar un grado.' }).min(1, {message: 'Debes seleccionar un grado.'}),
 });
 
@@ -555,6 +555,8 @@ function SectionsManager() {
         defaultValues: { subjectId: '', teacherId: '', schedule: '' },
     });
 
+    const sectionNameOptions = Array.from({ length: 26 }, (_, i) => `Sección ${String.fromCharCode(65 + i)}`);
+
     // Effects
     React.useEffect(() => {
         sectionForm.reset({ name: editingSection?.name || '', gradeId: editingSection?.gradeId || '' });
@@ -581,6 +583,7 @@ function SectionsManager() {
 
     const handleCreateSectionClick = () => {
         setEditingSection(null);
+        sectionForm.reset({ name: '', gradeId: '' });
         setIsSectionDialogOpen(true);
     };
 
@@ -759,13 +762,28 @@ function SectionsManager() {
                     </DialogHeader>
                     <Form {...sectionForm}>
                         <form onSubmit={sectionForm.handleSubmit(onSectionSubmit)} className="grid gap-4 py-4">
-                            <FormField control={sectionForm.control} name="name" render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Nombre</FormLabel>
-                                    <FormControl><Input placeholder="Sección A" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
+                            <FormField
+                                control={sectionForm.control}
+                                name="name"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nombre</FormLabel>
+                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Selecciona una sección" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                {sectionNameOptions.map((option) => (
+                                                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                             <FormField control={sectionForm.control} name="gradeId" render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Grado</FormLabel>
