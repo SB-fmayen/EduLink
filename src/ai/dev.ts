@@ -1,1 +1,3 @@
-// Flows will be imported for their side effects in this file.
+// src/ai/dev.ts
+// Import all flows for side effects.
+import './flows/diagnose-plant-flow';
