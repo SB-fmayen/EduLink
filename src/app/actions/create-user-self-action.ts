@@ -13,8 +13,8 @@ function initializeAdminApp(): App {
     return getApps()[0];
   }
 
-  const credentialJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (!credentialJson) {
+  const credentialJsonString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (!credentialJsonString) {
     throw new Error(
       "La variable de entorno GOOGLE_APPLICATION_CREDENTIALS_JSON no está configurada. " +
       "Por favor, copia el contenido de tu archivo JSON de credenciales de servicio en la variable " +
@@ -22,9 +22,17 @@ function initializeAdminApp(): App {
     );
   }
 
-  return initializeApp({
-    credential: cert(JSON.parse(credentialJson)),
-  });
+  try {
+    const credential = cert(JSON.parse(credentialJsonString));
+     return initializeApp({
+      credential,
+    });
+  } catch (e) {
+     throw new Error(
+      "El valor de GOOGLE_APPLICATION_CREDENTIALS_JSON no es un JSON válido. " +
+      "Asegúrate de copiar todo el contenido del archivo de credenciales y no solo la ruta."
+    );
+  }
 }
 
 
@@ -80,16 +88,6 @@ export async function createUserSelfAction(
     return { uid: userRecord.uid };
   } catch (error: any) {
     console.error('Error creating user (Self-Registration Server Action):', error);
-
-    // Check for the specific authentication error in development
-    if (error.code === 'auth/internal-error' && error.message.includes('credential-error')) {
-         return {
-            error: {
-                code: 'credential-error',
-                message: "Error de credenciales del servidor. Asegúrate de que tu archivo '.env.local' esté configurado correctamente con la ruta a tu 'serviceAccountKey.json'. Consulta la documentación para más detalles."
-            }
-        };
-    }
     
     return {
       error: {
