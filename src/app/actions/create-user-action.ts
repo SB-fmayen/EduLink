@@ -5,7 +5,6 @@ import { initializeApp, getApps, App, cert } from 'firebase-admin/app';
 
 /**
  * Initializes the Firebase Admin app, ensuring it's only done once.
- * It relies on Google Application Default Credentials for authentication.
  * @returns {App} The initialized Firebase Admin App.
  */
 function initializeAdminApp(): App {
@@ -13,25 +12,27 @@ function initializeAdminApp(): App {
     return getApps()[0];
   }
 
-  const credentialJsonString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (!credentialJsonString) {
+  // Use a more reliably loaded environment variable for server actions.
+  const adminConfigString = process.env.FIREBASE_ADMIN_CONFIG;
+
+  if (!adminConfigString) {
     throw new Error(
-      "La variable de entorno GOOGLE_APPLICATION_CREDENTIALS_JSON no está configurada. " +
-      "Por favor, copia el contenido de tu archivo JSON de credenciales de servicio en la variable " +
-      "dentro de tu archivo '.env.local'."
+      'La variable de entorno FIREBASE_ADMIN_CONFIG no está configurada. ' +
+      'Por favor, copia el contenido de tu archivo JSON de credenciales de servicio ' +
+      'y pégalo en esa variable dentro de tu archivo .env.local.'
     );
   }
 
   try {
-    const serviceAccount = JSON.parse(credentialJsonString);
+    const serviceAccount = JSON.parse(adminConfigString);
     return initializeApp({
       credential: cert(serviceAccount),
     });
   } catch (e: any) {
-    console.error("Error parsing GOOGLE_APPLICATION_CREDENTIALS_JSON:", e.message);
+    console.error("Error parsing FIREBASE_ADMIN_CONFIG:", e.message);
     throw new Error(
-      "El valor de GOOGLE_APPLICATION_CREDENTIALS_JSON no es un JSON válido. " +
-      "Asegúrate de copiar todo el contenido del archivo de credenciales y no solo la ruta."
+      'El valor de FIREBASE_ADMIN_CONFIG no es un JSON válido. ' +
+      'Asegúrate de haber copiado todo el contenido del archivo de credenciales.'
     );
   }
 }
