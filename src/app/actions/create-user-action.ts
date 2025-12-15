@@ -23,12 +23,13 @@ function initializeAdminApp(): App {
   }
 
   try {
-    const credential = cert(JSON.parse(credentialJsonString));
-     return initializeApp({
-      credential,
+    const serviceAccount = JSON.parse(credentialJsonString);
+    return initializeApp({
+      credential: cert(serviceAccount),
     });
-  } catch (e) {
-     throw new Error(
+  } catch (e: any) {
+    console.error("Error parsing GOOGLE_APPLICATION_CREDENTIALS_JSON:", e.message);
+    throw new Error(
       "El valor de GOOGLE_APPLICATION_CREDENTIALS_JSON no es un JSON válido. " +
       "Asegúrate de copiar todo el contenido del archivo de credenciales y no solo la ruta."
     );
