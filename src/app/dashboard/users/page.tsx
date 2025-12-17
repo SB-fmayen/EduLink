@@ -42,6 +42,7 @@ export default function UsersPage() {
   const { data: users, isLoading } = useCollection<UserData>(usersRef);
 
   const handleRoleChange = async (userId: string, newRole: Role) => {
+    if (!firestore) return;
     const userDocRef = doc(firestore, 'users', userId);
     try {
       await updateDoc(userDocRef, { role: newRole });
