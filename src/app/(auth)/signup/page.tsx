@@ -14,9 +14,6 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createUserSelfAction } from '@/app/actions/create-user-self-action';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { useAuth } from '@/firebase';
-
 
 const formSchema = z.object({
   firstName: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
@@ -29,7 +26,6 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
-  const auth = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -49,6 +45,7 @@ export default function SignupPage() {
         if (error.code === 'auth/email-already-in-use') {
           form.setError('email', { type: 'manual', message: 'Este correo electrónico ya está en uso.' });
         } else {
+          // Lanza el error para que sea atrapado por el bloque catch general
           throw new Error(error.message);
         }
         return;
@@ -57,25 +54,20 @@ export default function SignupPage() {
       if (uid) {
         toast({
             title: "¡Cuenta Creada!",
-            description: "Tu cuenta ha sido creada con éxito. Iniciando sesión...",
+            description: "Tu cuenta ha sido creada con éxito. Ahora puedes iniciar sesión.",
         });
-        
-        // Automatically sign in the user after successful registration
-        if(auth) {
-            await signInWithEmailAndPassword(auth, values.email, values.password);
-            // The layout's effect will handle the redirection to /dashboard
-        }
+        // Redirige al usuario a la página de login después del registro exitoso
+        router.push('/login');
       }
 
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Error al registrar la cuenta',
-        description: error.message || 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.',
+        description: error.message || 'Ocurrió un error inesperado. Verifica tus credenciales y la configuración del servidor.',
       });
     }
   }
-
 
   return (
     <Card className="mx-auto max-w-sm w-full">
