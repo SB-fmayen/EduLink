@@ -206,7 +206,8 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
   const { data: studentEnrollments, isLoading: isLoadingEnrollments } = useCollection(studentEnrollmentsQuery);
 
   const studentCourseIds = React.useMemo(() => {
-    if (!studentEnrollments) return null;
+    if (!studentEnrollments) return null; // Still loading or not applicable
+    // If studentEnrollments is an empty array, it means the query ran and found nothing.
     return studentEnrollments.map(doc => doc.ref.parent.parent!.id);
   }, [studentEnrollments]);
 
@@ -224,9 +225,9 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
 
 
   const coursesToDisplay = React.useMemo(() => {
-    if (profile.role === 'student') return studentCourseIds;
-    if (profile.role === 'teacher') return teacherCourses?.map(c => c.id) || null;
-    return null;
+    if (profile.role === 'student') return studentCourseIds; // Can be null, or empty array
+    if (profile.role === 'teacher') return teacherCourses?.map(c => c.id) || []; // Default to empty array
+    return []; // Default for other roles
   }, [profile.role, studentCourseIds, teacherCourses]);
 
   const isLoading = isLoadingEnrollments || isLoadingTeacherCourses;
@@ -254,17 +255,21 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <>
           {coursesToDisplay && coursesToDisplay.length > 0 ? (
-            coursesToDisplay.map(id => <CourseCard key={id} courseId={id} />)
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {coursesToDisplay.map(id => <CourseCard key={id} courseId={id} />)}
+            </div>
           ) : (
-             <div className="col-span-full text-center py-10">
-                <p className="text-muted-foreground">
-                    {profile.role === 'student' ? "Aún no estás inscrito en ningún curso. Si esto es un error, contacta a tu administrador." : "No tienes cursos asignados."}
-                </p>
-             </div>
+             <Card className="col-span-full text-center py-10">
+                <CardContent>
+                    <p className="text-muted-foreground">
+                        {profile.role === 'student' ? "Aún no se te han asignado cursos. ¡Muy pronto aparecerán aquí!" : "No tienes cursos asignados."}
+                    </p>
+                </CardContent>
+             </Card>
           )}
-        </div>
+        </>
       )}
     </>
   );
