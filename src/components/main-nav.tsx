@@ -22,7 +22,7 @@ export function MainNav() {
   const firestore = useFirestore();
 
   const userDocRef = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user?.uid) return null; // <-- CORRECCIÓN CLAVE: Asegurarse de que user.uid exista
     return doc(firestore, `users/${user.uid}`);
   }, [user, firestore]);
   
