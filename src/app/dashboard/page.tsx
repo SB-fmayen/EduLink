@@ -208,7 +208,8 @@ function StudentTeacherDashboard({ user, profile }: { user: any; profile: UserPr
   const studentCourseIds = React.useMemo(() => {
     if (!studentEnrollments) return null; // Still loading or not applicable
     // If studentEnrollments is an empty array, it means the query ran and found nothing.
-    return studentEnrollments.map(doc => doc.ref.parent.parent!.id);
+    const ids = studentEnrollments.map(doc => doc.ref.parent.parent!.id);
+    return ids.length > 0 ? ids : [];
   }, [studentEnrollments]);
 
   // Lógica para profesores
