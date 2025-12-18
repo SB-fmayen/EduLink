@@ -4,7 +4,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useDoc, useUser, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
-import { doc, collection, query, where, getDocs, collectionGroup, documentId } from 'firebase/firestore';
+import { doc, collection, query, where, documentId } from 'firebase/firestore';
 import { Role } from '@/lib/roles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Users, Activity, FileText, MessageSquare, Bell, BarChart2, Loader2 } from 'lucide-react';
@@ -25,7 +25,7 @@ interface UserProfile {
 
 interface Course {
     id: string;
-    subjectId: string; // Este es el código del curso
+    subjectId: string;
     subjectName?: string;
     sectionId: string;
     teacherId: string;
@@ -34,19 +34,29 @@ interface Course {
 }
 
 interface CourseCardProps {
-  courseId: string;
+  courseId?: string;
+  courseData?: Course;
 }
 
-// --- Componente CourseCard (ACTUALIZADO) ---
-function CourseCard({ courseId }: CourseCardProps) {
+// --- Componente CourseCard (ACTUALIZADO para aceptar datos directamente) ---
+function CourseCard({ courseId, courseData }: CourseCardProps) {
   const firestore = useFirestore();
 
-  const courseRef = useMemoFirebase(() => doc(firestore, `courses`, courseId), [firestore, courseId]);
-  const { data: course, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
+  const courseRef = useMemoFirebase(() => {
+    if (courseId && !courseData) {
+        return doc(firestore, `courses`, courseId);
+    }
+    return null;
+  }, [firestore, courseId, courseData]);
+
+  const { data: fetchedCourse, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
   
+  const course = courseData || fetchedCourse;
+  const isLoading = isLoadingCourse && !courseData;
+
   const courseImage = PlaceHolderImages.find(img => img.id === 'course-placeholder');
 
-  if (isLoadingCourse) {
+  if (isLoading) {
     return (
         <Card className="overflow-hidden">
             <Skeleton className="h-36 w-full" />
@@ -76,7 +86,6 @@ function CourseCard({ courseId }: CourseCardProps) {
               className="object-cover"
               data-ai-hint={courseImage?.imageHint}
             />
-            {/* --- Icono de Menú (siempre visible) --- */}
             <div className="absolute top-2 right-2">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -91,7 +100,6 @@ function CourseCard({ courseId }: CourseCardProps) {
                 </DropdownMenu>
             </div>
           </div>
-          {/* --- Contenido de la Tarjeta (rediseñado) --- */}
           <CardContent className="p-4 flex flex-col flex-grow">
             <div className="flex-grow">
                 <h3 className="font-bold text-primary uppercase truncate" title={course.subjectName}>
@@ -111,6 +119,7 @@ function CourseCard({ courseId }: CourseCardProps) {
     </Card>
   );
 }
+
 
 // --- Vistas del Dashboard ---
 function AdminParentDashboard({ profile }: { profile: UserProfile }) {
@@ -165,7 +174,7 @@ function StudentDashboard({ userProfile }: { userProfile: UserProfile }) {
   );
 }
 
-// --- Dashboard para Profesores ---
+// --- Dashboard para Profesores (REFACTORIZADO) ---
 function TeacherDashboard({ user }: { user: any }) {
   const firestore = useFirestore();
 
@@ -174,8 +183,6 @@ function TeacherDashboard({ user }: { user: any }) {
   }, [firestore, user.uid]);
   
   const { data: teacherCourses, isLoading } = useCollection<Course>(coursesQuery);
-
-  const courseIds = teacherCourses?.map(c => c.id) || [];
 
   return (
     <>
@@ -196,9 +203,9 @@ function TeacherDashboard({ user }: { user: any }) {
         </div>
       ) : (
         <>
-          {courseIds.length > 0 ? (
+          {teacherCourses && teacherCourses.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {courseIds.map(id => <CourseCard key={id} courseId={id} />)}
+              {teacherCourses.map(course => <CourseCard key={course.id} courseData={course} />)}
             </div>
           ) : (
              <Card className="col-span-full text-center py-10">
