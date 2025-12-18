@@ -10,15 +10,14 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useDoc, useFirestore, useMemoFirebase, useCollection, useUser } from '@/firebase';
+import { useDoc, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
 import { doc, collection, query, where } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Badge } from '@/components/ui/badge';
-import { Mail, Phone, School, User as UserIcon } from 'lucide-react';
+import { Mail, User as UserIcon } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
 
 interface TeacherProfile {
   id: string;
@@ -51,7 +50,7 @@ function TeacherCourses({ teacherId }: { teacherId: string }) {
 
     if (isLoading) {
         return (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {[...Array(3)].map((_, i) => (
                     <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-10 w-full" /></CardContent></Card>
                 ))}
@@ -67,11 +66,11 @@ function TeacherCourses({ teacherId }: { teacherId: string }) {
             </CardHeader>
             <CardContent>
                 {courses && courses.length > 0 ? (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                         {courses.map(course => (
                            <Card key={course.id} className="flex flex-col">
                                <CardHeader>
-                                   <CardTitle className="text-lg">{course.subjectName}</CardTitle>
+                                   <CardTitle className="text-base">{course.subjectName}</CardTitle>
                                    <CardDescription>{course.sectionName}</CardDescription>
                                </CardHeader>
                                <CardFooter className="mt-auto">
@@ -92,11 +91,8 @@ function TeacherCourses({ teacherId }: { teacherId: string }) {
 
 
 export default function TeacherProfilePage({ params }: { params: { id: string } }) {
-  const teacherId = React.use(params).id;
+  const teacherId = params.id;
   const firestore = useFirestore();
-  const { user } = useUser();
-
-  const [showCourses, setShowCourses] = React.useState(false);
 
   const teacherDocRef = useMemoFirebase(() => doc(firestore, 'users', teacherId), [firestore, teacherId]);
   const { data: teacher, isLoading } = useDoc<TeacherProfile>(teacherDocRef);
@@ -107,60 +103,74 @@ export default function TeacherProfilePage({ params }: { params: { id: string } 
     return (
       <div className="space-y-6">
         <Skeleton className="h-9 w-1/2" />
-        <Card>
-          <CardHeader className="items-center text-center">
-            <Skeleton className="h-24 w-24 rounded-full" />
-            <div className="space-y-2 mt-4">
-                <Skeleton className="h-7 w-48" />
-                <Skeleton className="h-5 w-64" />
+        <div className="grid gap-6 lg:grid-cols-3">
+             <Card className="lg:col-span-1">
+                <CardHeader className="items-center text-center p-6">
+                    <Skeleton className="h-24 w-24 rounded-full" />
+                    <div className="space-y-2 mt-4">
+                        <Skeleton className="h-7 w-48" />
+                        <Skeleton className="h-5 w-32" />
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-full" />
+                </CardContent>
+            </Card>
+            <div className="lg:col-span-2">
+                <Card>
+                    <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+                    <CardContent><Skeleton className="h-40 w-full" /></CardContent>
+                </Card>
             </div>
-          </CardHeader>
-          <CardContent>
-             <Skeleton className="h-40 w-full" />
-          </CardContent>
-        </Card>
+        </div>
       </div>
     );
   }
 
   if (!teacher) {
-    return <div>Profesor no encontrado.</div>;
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Profesor no encontrado</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p>No se pudo encontrar la información para el ID de profesor proporcionado.</p>
+                <Button asChild variant="link" className="px-0">
+                    <Link href="/dashboard/teachers">Volver al listado</Link>
+                </Button>
+            </CardContent>
+        </Card>
+    );
   }
 
   return (
     <div className="flex flex-col gap-6">
         <h1 className="text-3xl font-bold tracking-tight">Perfil del Profesor</h1>
         <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
+            <Card className="lg:col-span-1 self-start">
                 <CardHeader className="items-center text-center p-6">
                     <Avatar className="h-24 w-24 mb-4">
                         <AvatarImage src={teacher.photoURL || userAvatar?.imageUrl} alt="Avatar del profesor" />
                         <AvatarFallback>{teacher.firstName.charAt(0)}{teacher.lastName.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <CardTitle className="text-2xl">{teacher.firstName} {teacher.lastName}</CardTitle>
-                    <Badge variant="default">{teacher.role}</Badge>
+                    <Badge variant="outline">{teacher.role}</Badge>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-3">
+                <CardContent className="text-sm text-muted-foreground space-y-4">
                     <div className="flex items-center gap-3">
-                        <Mail className="h-4 w-4" />
-                        <span>{teacher.email}</span>
+                        <Mail className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">{teacher.email}</span>
                     </div>
                      <div className="flex items-center gap-3">
-                        <UserIcon className="h-4 w-4" />
-                        <span>ID: {teacher.id}</span>
+                        <UserIcon className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">ID: {teacher.id}</span>
                     </div>
                 </CardContent>
-                <CardFooter>
-                    <Button className="w-full" onClick={() => setShowCourses(!showCourses)}>
-                        {showCourses ? 'Ocultar Cursos Asignados' : 'Ver Cursos Asignados'}
-                    </Button>
-                </CardFooter>
             </Card>
 
             <div className="lg:col-span-2">
-                {showCourses && (
-                    <TeacherCourses teacherId={teacher.id} />
-                )}
+                <TeacherCourses teacherId={teacher.id} />
             </div>
         </div>
     </div>
