@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { Book, GraduationCap, Users } from 'lucide-react';
@@ -50,7 +48,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, doc, serverTimestamp, query, where, getDocs, documentId } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, query, where, getDocs, documentId, writeBatch } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -514,7 +512,6 @@ function SectionsManager() {
     const subjectsRef = useMemoFirebase(() => collection(firestore, `subjects`), [firestore]);
     const { data: subjects } = useCollection<SubjectData>(subjectsRef);
 
-    // Get teacher profiles from the main users collection with role 'teacher'
     const teachersQuery = useMemoFirebase(() => {
         return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }, [firestore]);
@@ -534,7 +531,7 @@ function SectionsManager() {
     const [isAlertOpen, setIsAlertOpen] = React.useState(false);
     const [alertContent, setAlertContent] = React.useState({ title: '', description: '' });
     const [sectionToDelete, setSectionToDelete] = React.useState<SectionData | null>(null);
-    const [courseToDeleteId, setCourseToDeleteId] = React.useState<string | null>(null);
+    const [courseToDelete, setCourseToDelete] = React.useState<CourseData | null>(null);
     
     const [gradeFilter, setGradeFilter] = React.useState<string>('all');
     const [searchTerm, setSearchTerm] = React.useState<string>('');
@@ -556,7 +553,6 @@ function SectionsManager() {
     const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
     const minutes = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
-    // Effects
     React.useEffect(() => {
         sectionForm.reset({ name: editingSection?.name || '', gradeId: editingSection?.gradeId || '' });
     }, [editingSection, sectionForm]);
@@ -578,7 +574,6 @@ function SectionsManager() {
     }, [editingCourse, courseAssignmentForm]);
 
 
-    // Handlers
     const handleEditSectionClick = (section: SectionData) => {
         setEditingSection(section);
         setIsSectionDialogOpen(true);
@@ -646,8 +641,8 @@ function SectionsManager() {
         setEditingCourse(null);
     };
 
-    const onCourseAssignmentSubmit = (values: z.infer<typeof courseAssignmentFormSchema>) => {
-        if (!managingCoursesForSection || !coursesRef || !subjects || !teachers) return;
+    const onCourseAssignmentSubmit = async (values: z.infer<typeof courseAssignmentFormSchema>) => {
+        if (!managingCoursesForSection || !coursesRef || !subjects || !teachers || !firestore) return;
         
         const subject = subjects.find(s => s.id === values.subjectId);
         const teacher = teachers.find(t => t.id === values.teacherId);
@@ -658,39 +653,92 @@ function SectionsManager() {
         }
         
         const schedule = `${values.day} ${values.hour}:${values.minute}`;
+        const batch = writeBatch(firestore);
 
-        const dataToSave = {
-            subjectId: values.subjectId,
-            teacherId: values.teacherId,
-            schedule,
-            sectionId: managingCoursesForSection.id,
-            sectionName: managingCoursesForSection.name,
-            subjectName: subject.name,
-            teacherName: `${teacher.firstName} ${teacher.lastName}`,
-        };
+        try {
+            if (editingCourse) {
+                // Si estamos editando, puede que el profesor haya cambiado.
+                const oldTeacherId = editingCourse.teacherId;
+                const newTeacherId = values.teacherId;
+    
+                // 1. Eliminar la referencia del curso del profesor anterior si ha cambiado
+                if (oldTeacherId !== newTeacherId) {
+                    const oldTeacherCourseRef = doc(firestore, 'users', oldTeacherId, 'assignedCourses', editingCourse.id);
+                    batch.delete(oldTeacherCourseRef);
+                }
+    
+                // 2. Actualizar el documento del curso
+                const courseDocRef = doc(firestore, 'courses', editingCourse.id);
+                batch.update(courseDocRef, {
+                    subjectId: values.subjectId,
+                    teacherId: newTeacherId,
+                    schedule,
+                    subjectName: subject.name,
+                    teacherName: `${teacher.firstName} ${teacher.lastName}`,
+                });
+    
+                // 3. Crear (o sobreescribir) la referencia en la subcolección del nuevo profesor
+                const newTeacherCourseRef = doc(firestore, 'users', newTeacherId, 'assignedCourses', editingCourse.id);
+                batch.set(newTeacherCourseRef, { courseId: editingCourse.id });
+                
+                toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
+    
+            } else {
+                // Creando un nuevo curso
+                const newCourseRef = doc(collection(firestore, 'courses'));
+    
+                // 1. Crear el nuevo documento de curso
+                batch.set(newCourseRef, {
+                    subjectId: values.subjectId,
+                    teacherId: values.teacherId,
+                    schedule,
+                    sectionId: managingCoursesForSection.id,
+                    sectionName: managingCoursesForSection.name,
+                    subjectName: subject.name,
+                    teacherName: `${teacher.firstName} ${teacher.lastName}`,
+                    createdAt: serverTimestamp(),
+                });
+    
+                // 2. Crear la referencia en la subcolección del profesor
+                const teacherCourseRef = doc(firestore, 'users', values.teacherId, 'assignedCourses', newCourseRef.id);
+                batch.set(teacherCourseRef, { courseId: newCourseRef.id });
+    
+                toast({ title: "Curso Asignado", description: "El curso ha sido asignado a la sección." });
+            }
+    
+            await batch.commit();
+            courseAssignmentForm.reset();
+            setEditingCourse(null);
 
-        if (editingCourse) {
-            const courseDocRef = doc(firestore, 'courses', editingCourse.id);
-            updateDocumentNonBlocking(courseDocRef, dataToSave);
-            toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
-
-        } else {
-            addDocumentNonBlocking(coursesRef, {
-                ...dataToSave,
-                createdAt: serverTimestamp(),
-            });
-            toast({ title: "Curso Asignado", description: "El curso ha sido asignado a la sección." });
+        } catch(error) {
+            console.error("Error saving course assignment:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la asignación del curso.' });
         }
-        courseAssignmentForm.reset();
-        setEditingCourse(null);
     };
     
-    const executeDeleteCourse = () => {
-        if (!courseToDeleteId || !firestore) return;
-        const courseDocRef = doc(firestore, 'courses', courseToDeleteId);
-        deleteDocumentNonBlocking(courseDocRef);
-        toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección." });
-        setCourseToDeleteId(null);
+    const executeDeleteCourse = async () => {
+        if (!courseToDelete || !firestore) return;
+        
+        try {
+            const batch = writeBatch(firestore);
+
+            // 1. Referencia al documento del curso principal
+            const courseDocRef = doc(firestore, 'courses', courseToDelete.id);
+            batch.delete(courseDocRef);
+
+            // 2. Referencia a la asignación en la subcolección del profesor
+            const teacherCourseRef = doc(firestore, 'users', courseToDelete.teacherId, 'assignedCourses', courseToDelete.id);
+            batch.delete(teacherCourseRef);
+
+            await batch.commit();
+
+            toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección y del profesor." });
+        } catch (error) {
+            console.error("Error deleting course assignment:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la asignación.' });
+        } finally {
+            setCourseToDelete(null);
+        }
     }
 
     const handleEditCourseClick = (course: CourseData) => {
@@ -798,7 +846,6 @@ function SectionsManager() {
                 </CardContent>
             </Card>
 
-            {/* Dialog for Creating/Editing Section */}
             <Dialog open={isSectionDialogOpen} onOpenChange={setIsSectionDialogOpen}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
@@ -848,7 +895,6 @@ function SectionsManager() {
                 </DialogContent>
             </Dialog>
 
-            {/* Dialog for Managing Courses in Section */}
             <Dialog open={isCourseDialogOpen} onOpenChange={(isOpen) => { setIsCourseDialogOpen(isOpen); if (!isOpen) setEditingCourse(null); }}>
                 <DialogContent className="sm:max-w-4xl">
                     <DialogHeader>
@@ -956,7 +1002,7 @@ function SectionsManager() {
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
                                                             <DropdownMenuItem onClick={() => handleEditCourseClick(course)}>Editar</DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setCourseToDeleteId(course.id); }}>Eliminar</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setCourseToDelete(course); }}>Eliminar</DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </TableCell>
@@ -972,7 +1018,6 @@ function SectionsManager() {
                 </DialogContent>
             </Dialog>
 
-            {/* Confirmation Dialogs */}
             <AlertDialog open={sectionToDelete !== null} onOpenChange={(open) => !open && setSectionToDelete(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -986,7 +1031,7 @@ function SectionsManager() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            <AlertDialog open={courseToDeleteId !== null} onOpenChange={(open) => !open && setCourseToDeleteId(null)}>
+            <AlertDialog open={courseToDelete !== null} onOpenChange={(open) => !open && setCourseToDelete(null)}>
                  <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Seguro?</AlertDialogTitle>

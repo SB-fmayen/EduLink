@@ -33,27 +33,28 @@ interface Course {
     sectionName?: string;
 }
 
+interface AssignedCourse {
+    id: string; // This is the document ID from the subcollection
+    courseId: string; // This is the ID of the actual course in the `courses` collection
+}
+
 interface CourseCardProps {
-  courseId?: string;
-  courseData?: Course;
+  courseId: string;
 }
 
 // --- Componente CourseCard (ACTUALIZADO para aceptar datos directamente) ---
-function CourseCard({ courseId, courseData }: CourseCardProps) {
+function CourseCard({ courseId }: CourseCardProps) {
   const firestore = useFirestore();
 
   const courseRef = useMemoFirebase(() => {
-    if (courseId && !courseData) {
+    if (courseId) {
         return doc(firestore, `courses`, courseId);
     }
     return null;
-  }, [firestore, courseId, courseData]);
+  }, [firestore, courseId]);
 
-  const { data: fetchedCourse, isLoading: isLoadingCourse } = useDoc<Course>(courseRef);
+  const { data: course, isLoading } = useDoc<Course>(courseRef);
   
-  const course = courseData || fetchedCourse;
-  const isLoading = isLoadingCourse && !courseData;
-
   const courseImage = PlaceHolderImages.find(img => img.id === 'course-placeholder');
 
   if (isLoading) {
@@ -178,11 +179,17 @@ function StudentDashboard({ userProfile }: { userProfile: UserProfile }) {
 function TeacherDashboard({ user }: { user: any }) {
   const firestore = useFirestore();
 
-  const coursesQuery = useMemoFirebase(() => {
-    return query(collection(firestore, `courses`), where('teacherId', '==', user.uid));
+  // 1. Query the subcollection for assigned course pointers
+  const assignedCoursesQuery = useMemoFirebase(() => {
+    return collection(firestore, `users/${user.uid}/assignedCourses`);
   }, [firestore, user.uid]);
   
-  const { data: teacherCourses, isLoading } = useCollection<Course>(coursesQuery);
+  const { data: assignedCourses, isLoading } = useCollection<AssignedCourse>(assignedCoursesQuery);
+  
+  // 2. Extract the course IDs from the subcollection documents
+  const courseIds = React.useMemo(() => {
+    return assignedCourses ? assignedCourses.map(ac => ac.courseId) : [];
+  }, [assignedCourses]);
 
   return (
     <>
@@ -203,9 +210,9 @@ function TeacherDashboard({ user }: { user: any }) {
         </div>
       ) : (
         <>
-          {teacherCourses && teacherCourses.length > 0 ? (
+          {courseIds && courseIds.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {teacherCourses.map(course => <CourseCard key={course.id} courseData={course} />)}
+              {courseIds.map(courseId => <CourseCard key={courseId} courseId={courseId} />)}
             </div>
           ) : (
              <Card className="col-span-full text-center py-10">
