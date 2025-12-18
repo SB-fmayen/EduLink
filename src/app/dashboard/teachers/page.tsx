@@ -77,7 +77,8 @@ export default function TeachersPage() {
   const userRole = userData?.role;
 
   const teachersQuery = useMemoFirebase(() => {
-    if (userRole === 'admin') { 
+    // Only admins and directors can see all teachers
+    if (userRole === 'admin' || userRole === 'director') { 
       return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }
     return null;
@@ -193,12 +194,14 @@ export default function TeachersPage() {
       toast({ variant: 'destructive', title: 'Error de Base de Datos', description: 'El usuario fue autenticado pero no se pudo guardar su perfil. Contacta a soporte.' });
     }
   };
+
+  const canManageTeachers = userRole === 'admin' || userRole === 'director';
   
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Gestión de Profesores</h1>
-        {userRole === 'admin' && (
+        {canManageTeachers && (
           <Button onClick={() => setIsNewTeacherDialogOpen(true)}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Crear Profesor
@@ -242,29 +245,31 @@ export default function TeachersPage() {
                       <Badge variant="default">{teacher.role}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Abrir menú</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleModifyClick(teacher)}>
-                            Modificar datos
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDetailsClick(teacher.id)}>
-                            Ver Detalles
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {canManageTeachers && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Abrir menú</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleModifyClick(teacher)}>
+                              Modificar datos
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDetailsClick(teacher.id)}>
+                              Ver Detalles
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center">
-                    No hay profesores registrados.
+                    No hay profesores registrados o no tienes permiso para verlos.
                   </TableCell>
                 </TableRow>
               )}

@@ -17,7 +17,8 @@ service cloud.firestore {
     }
 
     function isStaff() {
-      return isSignedIn() && (getRequesterProfile().data.role == 'admin' || getRequesterProfile().data.role == 'director');
+      let role = getRequesterProfile().data.role;
+      return isSignedIn() && (role == 'admin' || role == 'director');
     }
 
     function isAdmin() {
@@ -28,8 +29,9 @@ service cloud.firestore {
       return isSignedIn() && getRequesterProfile().data.schoolId == schoolId;
     }
     
-    function isTeacherOfCourse(schoolId, courseId) {
-      return isSignedIn() && get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId)).data.teacherId == request.auth.uid;
+    function isTeacherOfCourse(courseId) {
+      let courseDoc = get(/databases/$(database)/documents/courses/$(courseId));
+      return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
     }
 
     // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
@@ -41,7 +43,6 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
     
-    // REGLA AÑADIDA que faltaba
     match /sections/{docId} {
       allow read, write: if isStaff();
     }
@@ -49,52 +50,19 @@ service cloud.firestore {
     match /courses/{courseId} {
       allow read: if isSignedIn();
       allow write: if isStaff();
-    }
 
-    // --- REGLAS PARA COLECCIONES ANIDADAS EN ESCUELAS ---
-
-    match /schools/{schoolId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isStaff();
-      
-      match /teachers/{teacherId} {
-        allow get, list: if isMemberOfSchool(schoolId);
-        allow create, delete: if isStaff();
-      }
-
+      // Subcolección de estudiantes inscritos en un curso.
       match /students/{studentId} {
-        allow get, list: if isMemberOfSchool(schoolId);
-        allow create, delete: if isStaff();
-      }
-
-      match /grades/{gradeId} {
-        allow get, list: if isMemberOfSchool(schoolId);
-        allow create, update, delete: if isStaff();
-      }
-
-      match /sections/{sectionId} {
-        allow get, list: if isMemberOfSchool(schoolId);
-        allow create, update, delete: if isStaff();
-      }
-
-      match /subjects/{subjectId} {
-        allow get, list: if isMemberOfSchool(schoolId);
-        allow create, update, delete: if isStaff();
-      }
-
-      match /courses/{courseId} {
-        allow get, list: if isMemberOfSchool(schoolId);
-        allow create: if isStaff();
-        allow update, delete: if isTeacherOfCourse(schoolId, courseId) || isStaff();
-
-        match /students/{studentId} {
-           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isStaff() || isOwner(studentId);
-           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isStaff();
-        }
+         // El profesor del curso, el staff, o el propio estudiante pueden ver la inscripción.
+         allow get, list: if isTeacherOfCourse(courseId) || isStaff() || isOwner(studentId);
+         // El profesor del curso o el staff pueden inscribir o desinscribir estudiantes.
+         allow create, update, delete: if isTeacherOfCourse(courseId) || isStaff();
       }
     }
 
-    // --- REGLA PARA CONSULTA DE ESTUDIANTES ---
+    // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
+    // Permite a un estudiante ver sus propias inscripciones en todos los cursos
+    // y al staff ver cualquier inscripción.
     match /{path=**}/students/{studentDocId} {
         allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) || isStaff();
     }

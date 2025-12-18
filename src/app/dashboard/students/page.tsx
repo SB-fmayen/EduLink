@@ -177,8 +177,8 @@ export default function StudentsPage() {
       const userDocRef = doc(firestore, 'users', uid);
       batch.set(userDocRef, userPayload);
       
-      const schoolStudentRef = doc(firestore, `students`, uid);
-      batch.set(schoolStudentRef, { id: uid });
+      // We don't need to create in a separate `students` collection if we simplify
+      // Just query the `users` collection for role: 'student'
       
       await batch.commit();
       
@@ -282,12 +282,14 @@ export default function StudentsPage() {
     if (teacherStudentIds === null || teacherStudentIds.length === 0) {
       return null;
     }
+    // Firestore 'in' queries have a limit of 30 items per query.
     return query(collection(firestore, 'users'), where(documentId(), 'in', teacherStudentIds.slice(0, 30)));
   }, [teacherStudentIds, firestore]);
+
   const { data: teacherStudents, isLoading: isLoadingTeacherStudents } = useCollection<UserData>(teacherStudentsQuery);
 
   const studentsToDisplay = React.useMemo(() => {
-    if (userRole === 'admin') return allStudents;
+    if (userRole === 'admin' || userRole === 'director') return allStudents;
     if (userRole === 'teacher') {
       if (!teacherStudents) return [];
       if (!selectedSectionFilter || selectedSectionFilter === 'all') {
@@ -299,13 +301,14 @@ export default function StudentsPage() {
   }, [allStudents, teacherStudents, userRole, selectedSectionFilter]);
   
   const isLoading = isProfilesLoading || isLoadingTeacherStudentIds || isLoadingTeacherStudents;
+  const canManageStudents = userRole === 'admin' || userRole === 'director';
   
   return (
     <>
       <div className="flex flex-col gap-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold tracking-tight">Gestión de Estudiantes</h1>
-          {userRole === 'admin' && (
+          {canManageStudents && (
             <Button onClick={() => setIsNewStudentDialogOpen(true)}>
               <PlusCircle className="mr-2 h-4 w-4" />
               Crear Estudiante
@@ -347,13 +350,15 @@ export default function StudentsPage() {
                       </TableCell>
                       <TableCell><Badge variant="secondary">{student.role}</Badge></TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {userRole === 'admin' && <DropdownMenuItem onClick={() => handleAssignClick(student)}>Asignar a Sección</DropdownMenuItem>}
-                            <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {canManageStudents && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleAssignClick(student)}>Asignar a Sección</DropdownMenuItem>
+                              <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
