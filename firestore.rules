@@ -16,6 +16,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function isStaff() {
+      return isSignedIn() && (getRequesterProfile().data.role == 'admin' || getRequesterProfile().data.role == 'director');
+    }
+
     function isAdmin() {
       return isSignedIn() && getRequesterProfile().data.role == 'admin';
     }
@@ -25,72 +29,83 @@ service cloud.firestore {
     }
     
     function isTeacherOfCourse(schoolId, courseId) {
-      let courseDoc = get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId));
-      return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+      return isSignedIn() && get(/databases/$(database)/documents/schools/$(schoolId)/courses/$(courseId)).data.teacherId == request.auth.uid;
     }
 
-    // --- Reglas de Colecciones ---
+    // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
+    match /subjects/{docId} {
+      allow read, write: if isStaff();
+    }
+
+    match /grades/{docId} {
+      allow read, write: if isStaff();
+    }
+    
+    // REGLA AÑADIDA que faltaba
+    match /sections/{docId} {
+      allow read, write: if isStaff();
+    }
+
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    // --- REGLAS PARA COLECCIONES ANIDADAS EN ESCUELAS ---
 
     match /schools/{schoolId} {
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isStaff();
       
       match /teachers/{teacherId} {
         allow get, list: if isMemberOfSchool(schoolId);
-        allow create, delete: if isAdmin();
+        allow create, delete: if isStaff();
       }
 
       match /students/{studentId} {
         allow get, list: if isMemberOfSchool(schoolId);
-        allow create, delete: if isAdmin();
+        allow create, delete: if isStaff();
       }
 
       match /grades/{gradeId} {
         allow get, list: if isMemberOfSchool(schoolId);
-        allow create, update, delete: if isAdmin();
+        allow create, update, delete: if isStaff();
       }
 
       match /sections/{sectionId} {
         allow get, list: if isMemberOfSchool(schoolId);
-        allow create, update, delete: if isAdmin();
+        allow create, update, delete: if isStaff();
       }
 
       match /subjects/{subjectId} {
         allow get, list: if isMemberOfSchool(schoolId);
-        allow create, update, delete: if isAdmin();
+        allow create, update, delete: if isStaff();
       }
 
       match /courses/{courseId} {
         allow get, list: if isMemberOfSchool(schoolId);
-        allow create: if isAdmin();
-        allow update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin();
+        allow create: if isStaff();
+        allow update, delete: if isTeacherOfCourse(schoolId, courseId) || isStaff();
 
         match /students/{studentId} {
-           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isAdmin() || isOwner(studentId);
-           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isAdmin();
+           allow get, list: if isTeacherOfCourse(schoolId, courseId) || isStaff() || isOwner(studentId);
+           allow create, update, delete: if isTeacherOfCourse(schoolId, courseId) || isStaff();
         }
       }
     }
 
-    // Regla para la colección de cursos en la raíz
-    match /courses/{courseId} {
-      allow read: if isSignedIn();
-    }
-
-    // --- REGLA DEFINITIVA PARA LA CONSULTA DEL ESTUDIANTE ---
+    // --- REGLA PARA CONSULTA DE ESTUDIANTES ---
     match /{path=**}/students/{studentDocId} {
-        // Esta regla 'read' (get y list) permite que un usuario consulte el grupo de colecciones 'students'.
-        // La condición asegura que la consulta SOLO devolverá documentos donde el 'studentId' coincide con el UID del usuario.
-        // Como la consulta del cliente (`where('studentId', '==', user.uid)`) y la regla coinciden, Firestore la autoriza.
-        allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) || isAdmin();
+        allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) || isStaff();
     }
 
+    // --- REGLAS PARA LA COLECCIÓN DE USUARIOS ---
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
-      allow create: if isOwner(userId) || isAdmin();
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isOwner(userId) || isAdmin();
+      allow get: if isOwner(userId) || isStaff();
+      allow list: if isStaff();
+      allow create: if isOwner(userId) || isStaff();
+      allow update: if isOwner(userId) || isStaff();
+      allow delete: if isOwner(userId) || isStaff();
     }
   }
 }

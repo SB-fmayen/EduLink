@@ -496,7 +496,9 @@ const sectionFormSchema = z.object({
 const courseAssignmentFormSchema = z.object({
     subjectId: z.string({ required_error: 'Debes seleccionar una asignatura.' }).min(1, {message: 'Debes seleccionar una asignatura.'}),
     teacherId: z.string({ required_error: 'Debes seleccionar un profesor.' }).min(1, {message: 'Debes seleccionar un profesor.'}),
-    schedule: z.string().min(3, { message: 'El horario debe tener al menos 3 caracteres.' }),
+    day: z.string({ required_error: 'Debes seleccionar un día.' }),
+    hour: z.string({ required_error: 'Debes seleccionar una hora.' }),
+    minute: z.string({ required_error: 'Debes seleccionar los minutos.' }),
 });
 
 function SectionsManager() {
@@ -545,10 +547,14 @@ function SectionsManager() {
 
     const courseAssignmentForm = useForm<z.infer<typeof courseAssignmentFormSchema>>({
         resolver: zodResolver(courseAssignmentFormSchema),
-        defaultValues: { subjectId: '', teacherId: '', schedule: '' },
+        defaultValues: { subjectId: '', teacherId: '', day: '', hour: '', minute: '' },
     });
 
     const sectionNameOptions = Array.from({ length: 26 }, (_, i) => `Sección ${String.fromCharCode(65 + i)}`);
+
+    const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+    const minutes = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
     // Effects
     React.useEffect(() => {
@@ -556,14 +562,18 @@ function SectionsManager() {
     }, [editingSection, sectionForm]);
 
     React.useEffect(() => {
-        if (editingCourse) {
+        if (editingCourse && editingCourse.schedule) {
+            const [day, time] = editingCourse.schedule.split(' ');
+            const [hour, minute] = time ? time.split(':') : ['', ''];
             courseAssignmentForm.reset({
                 subjectId: editingCourse.subjectId,
                 teacherId: editingCourse.teacherId,
-                schedule: editingCourse.schedule,
+                day: day || '',
+                hour: hour || '',
+                minute: minute || ''
             });
         } else {
-            courseAssignmentForm.reset({ subjectId: '', teacherId: '', schedule: '' });
+            courseAssignmentForm.reset({ subjectId: '', teacherId: '', day: '', hour: '', minute: '' });
         }
     }, [editingCourse, courseAssignmentForm]);
 
@@ -646,9 +656,13 @@ function SectionsManager() {
             toast({ variant: "destructive", title: "Error", description: "La asignatura o el profesor seleccionado no son válidos." });
             return;
         }
+        
+        const schedule = `${values.day} ${values.hour}:${values.minute}`;
 
         const dataToSave = {
-            ...values,
+            subjectId: values.subjectId,
+            teacherId: values.teacherId,
+            schedule,
             sectionId: managingCoursesForSection.id,
             sectionName: managingCoursesForSection.name,
             subjectName: subject.name,
@@ -685,7 +699,7 @@ function SectionsManager() {
     
     const handleCancelEdit = () => {
         setEditingCourse(null);
-        courseAssignmentForm.reset({ subjectId: '', teacherId: '', schedule: '' });
+        courseAssignmentForm.reset({ subjectId: '', teacherId: '', day: '', hour: '', minute: '' });
     };
 
     const sectionCourses = React.useMemo(() => {
@@ -871,13 +885,43 @@ function SectionsManager() {
                                             <FormMessage />
                                         </FormItem>
                                     )} />
-                                    <FormField control={courseAssignmentForm.control} name="schedule" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Horario</FormLabel>
-                                            <FormControl><Input placeholder="Lunes 9:00 AM - 10:00 AM" {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
+                                    <FormItem>
+                                        <FormLabel>Horario</FormLabel>
+                                        <div className="flex gap-2">
+                                            <FormField control={courseAssignmentForm.control} name="day" render={({ field }) => (
+                                                <FormItem className="flex-1">
+                                                    <Select onValueChange={field.onChange} value={field.value}>
+                                                        <FormControl><SelectTrigger><SelectValue placeholder="Día" /></SelectTrigger></FormControl>
+                                                        <SelectContent>
+                                                            {daysOfWeek.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </FormItem>
+                                            )} />
+                                             <FormField control={courseAssignmentForm.control} name="hour" render={({ field }) => (
+                                                <FormItem className="w-24">
+                                                    <Select onValueChange={field.onChange} value={field.value}>
+                                                        <FormControl><SelectTrigger><SelectValue placeholder="Hora" /></SelectTrigger></FormControl>
+                                                        <SelectContent>
+                                                            {hours.map(hour => <SelectItem key={hour} value={hour}>{hour}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </FormItem>
+                                            )} />
+                                             <FormField control={courseAssignmentForm.control} name="minute" render={({ field }) => (
+                                                <FormItem className="w-24">
+                                                    <Select onValueChange={field.onChange} value={field.value}>
+                                                        <FormControl><SelectTrigger><SelectValue placeholder="Min" /></SelectTrigger></FormControl>
+                                                        <SelectContent>
+                                                            {minutes.map(min => <SelectItem key={min} value={min}>{min}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </FormItem>
+                                            )} />
+                                        </div>
+                                        <FormMessage>{courseAssignmentForm.formState.errors.day?.message || courseAssignmentForm.formState.errors.hour?.message || courseAssignmentForm.formState.errors.minute?.message}</FormMessage>
+                                    </FormItem>
+                                    
                                     <div className="flex gap-2">
                                         <Button type="submit">{editingCourse ? 'Guardar Cambios' : 'Asignar Curso'}</Button>
                                         {editingCourse && <Button variant="ghost" onClick={handleCancelEdit}>Cancelar</Button>}

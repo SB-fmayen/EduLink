@@ -20,12 +20,12 @@ interface UserProfile {
   role: Role;
   firstName: string;
   lastName: string;
-  enrolledCourses?: string[]; // <-- CAMPO AÑADIDO
+  enrolledCourses?: string[];
 }
 
 interface Course {
     id: string;
-    subjectId: string;
+    subjectId: string; // Este es el código del curso
     subjectName?: string;
     sectionId: string;
     teacherId: string;
@@ -37,7 +37,7 @@ interface CourseCardProps {
   courseId: string;
 }
 
-// --- Componente CourseCard (sin cambios) ---
+// --- Componente CourseCard (ACTUALIZADO) ---
 function CourseCard({ courseId }: CourseCardProps) {
   const firestore = useFirestore();
 
@@ -76,27 +76,31 @@ function CourseCard({ courseId }: CourseCardProps) {
               className="object-cover"
               data-ai-hint={courseImage?.imageHint}
             />
-            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* --- Icono de Menú (siempre visible) --- */}
+            <div className="absolute top-2 right-2">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 hover:bg-white" onClick={(e) => e.preventDefault()}>
-                            <MoreVertical className="h-4 w-4 text-gray-700"/>
+                        <Button variant="destructive" size="icon" className="h-8 w-8 rounded-full" onClick={(e) => e.preventDefault()}>
+                            <MoreVertical className="h-4 w-4 text-white"/>
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Mover</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Editar</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Anular Inscripción</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
           </div>
+          {/* --- Contenido de la Tarjeta (rediseñado) --- */}
           <CardContent className="p-4 flex flex-col flex-grow">
-            <h3 className="font-semibold text-primary truncate" title={course.subjectName}>
-                {course.subjectName || 'Curso sin nombre'}
-            </h3>
-            <p className="text-sm text-muted-foreground">{course.sectionName}</p>
-            <p className="text-xs text-muted-foreground flex-grow">2-Semestre-Trimestre</p>
-            <div className="flex items-center gap-4 text-muted-foreground pt-4">
+            <div className="flex-grow">
+                <h3 className="font-bold text-primary uppercase truncate" title={course.subjectName}>
+                    {course.subjectName || 'Curso sin nombre'}
+                </h3>
+                <p className="text-sm text-muted-foreground">{course.subjectId}</p>
+                <p className="text-xs text-muted-foreground">2-Semestre-Trimestre</p>
+            </div>
+            <div className="flex items-center gap-4 text-muted-foreground pt-4 mt-auto">
               <BarChart2 className="h-5 w-5 hover:text-primary cursor-pointer" />
               <Bell className="h-5 w-5 hover:text-primary cursor-pointer" />
               <MessageSquare className="h-5 w-5 hover:text-primary cursor-pointer" />
@@ -136,23 +140,20 @@ function AdminParentDashboard({ profile }: { profile: UserProfile }) {
   );
 }
 
-// --- REFACTORIZADO: Dashboard para Estudiantes ---
+// --- Dashboard para Estudiantes ---
 function StudentDashboard({ userProfile }: { userProfile: UserProfile }) {
-  // Obtenemos los IDs de los cursos directamente del perfil del usuario.
   const courseIds = userProfile.enrolledCourses || [];
 
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Mis Cursos</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Tablero</h1>
       </div>
-      {/* La lógica de carga ahora es manejada por el componente padre */}
       {courseIds.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {courseIds.map(id => <CourseCard key={id} courseId={id} />)}
         </div>
       ) : (
-        // Si no hay cursos, mostramos el mensaje de bienvenida.
         <Card className="col-span-full text-center py-20">
           <CardContent className="flex flex-col items-center gap-4">
             <p className="text-2xl font-medium text-muted-foreground">¡Bienvenido!</p>
@@ -164,7 +165,7 @@ function StudentDashboard({ userProfile }: { userProfile: UserProfile }) {
   );
 }
 
-// --- Dashboard para Profesores (sin cambios críticos) ---
+// --- Dashboard para Profesores ---
 function TeacherDashboard({ user }: { user: any }) {
   const firestore = useFirestore();
 
@@ -179,7 +180,7 @@ function TeacherDashboard({ user }: { user: any }) {
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Mis Cursos</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Tablero</h1>
       </div>
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -213,7 +214,7 @@ function TeacherDashboard({ user }: { user: any }) {
 }
 
 
-// --- Componente Principal (actualizado para pasar el perfil de usuario) ---
+// --- Componente Principal ---
 export default function DashboardPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
@@ -221,7 +222,6 @@ export default function DashboardPage() {
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
 
-  // Estado de carga principal
   if (isUserLoading || isProfileLoading || !userProfile) {
     return (
         <div>
@@ -248,7 +248,6 @@ export default function DashboardPage() {
   }
 
   if (role === 'student') {
-    // Pasamos el perfil completo al dashboard del estudiante
     return <StudentDashboard userProfile={userProfile} />;
   }
   
