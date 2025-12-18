@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useDoc, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
-import { doc, collection, query, where } from 'firebase/firestore';
+import { doc, collection } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -28,30 +28,69 @@ interface TeacherProfile {
   photoURL?: string;
 }
 
+interface AssignedCourse {
+    id: string;
+    courseId: string;
+}
+
 interface Course {
     id: string;
     subjectName?: string;
     sectionName?: string;
 }
 
-function TeacherCourses({ teacherId }: { teacherId: string }) {
-    const firestore = useFirestore();
-    const teacherCoursesQuery = useMemoFirebase(() => {
-        if (teacherId) {
-            return query(
-                collection(firestore, `courses`),
-                where('teacherId', '==', teacherId)
-            );
-        }
-        return null;
-    }, [firestore, teacherId]);
 
-    const { data: courses, isLoading } = useCollection<Course>(teacherCoursesQuery);
+function CourseCard({ courseId }: { courseId: string }) {
+    const firestore = useFirestore();
+    const courseRef = useMemoFirebase(() => doc(firestore, `courses/${courseId}`), [firestore, courseId]);
+    const { data: course, isLoading } = useDoc<Course>(courseRef);
 
     if (isLoading) {
         return (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {[...Array(3)].map((_, i) => (
+             <Card className="flex flex-col">
+               <CardHeader>
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-4 w-1/2 mt-1" />
+               </CardHeader>
+               <CardFooter className="mt-auto">
+                    <Skeleton className="h-8 w-full" />
+               </CardFooter>
+           </Card>
+        );
+    }
+    
+    if (!course) return null;
+
+    return (
+        <Card key={course.id} className="flex flex-col">
+            <CardHeader>
+                <CardTitle className="text-base">{course.subjectName}</CardTitle>
+                <CardDescription>{course.sectionName}</CardDescription>
+            </CardHeader>
+            <CardFooter className="mt-auto">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                    <Link href={`/dashboard/courses/${course.id}`}>Ver Curso</Link>
+                </Button>
+            </CardFooter>
+        </Card>
+    );
+}
+
+
+function TeacherCourses({ teacherId }: { teacherId: string }) {
+    const firestore = useFirestore();
+
+    const assignedCoursesQuery = useMemoFirebase(() => {
+        if (!teacherId) return null;
+        return collection(firestore, `users/${teacherId}/assignedCourses`);
+    }, [firestore, teacherId]);
+
+    const { data: assignedCourses, isLoading } = useCollection<AssignedCourse>(assignedCoursesQuery);
+    
+    if (isLoading) {
+        return (
+            <div className="grid gap-4 md:grid-cols-2">
+                {[...Array(2)].map((_, i) => (
                     <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-10 w-full" /></CardContent></Card>
                 ))}
             </div>
@@ -65,20 +104,10 @@ function TeacherCourses({ teacherId }: { teacherId: string }) {
                 <CardDescription>Estos son los cursos que el profesor imparte actualmente.</CardDescription>
             </CardHeader>
             <CardContent>
-                {courses && courses.length > 0 ? (
+                {assignedCourses && assignedCourses.length > 0 ? (
                     <div className="grid gap-4 md:grid-cols-2">
-                        {courses.map(course => (
-                           <Card key={course.id} className="flex flex-col">
-                               <CardHeader>
-                                   <CardTitle className="text-base">{course.subjectName}</CardTitle>
-                                   <CardDescription>{course.sectionName}</CardDescription>
-                               </CardHeader>
-                               <CardFooter className="mt-auto">
-                                   <Button asChild variant="outline" size="sm" className="w-full">
-                                       <Link href={`/dashboard/courses/${course.id}`}>Ver Curso</Link>
-                                   </Button>
-                               </CardFooter>
-                           </Card>
+                        {assignedCourses.map(assignedCourse => (
+                           <CourseCard key={assignedCourse.id} courseId={assignedCourse.courseId} />
                         ))}
                     </div>
                 ) : (
@@ -102,7 +131,7 @@ export default function TeacherProfilePage({ params }: { params: { id: string } 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-9 w-1/2" />
+        <h1 className="text-3xl font-bold tracking-tight">Perfil del Profesor</h1>
         <div className="grid gap-6 lg:grid-cols-3">
              <Card className="lg:col-span-1">
                 <CardHeader className="items-center text-center p-6">
