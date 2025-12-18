@@ -762,9 +762,19 @@ function SectionsManager() {
     };
 
     const sectionCourses = React.useMemo(() => {
-        if (!managingCoursesForSection || !allCourses) return [];
-        return allCourses.filter(course => course.sectionId === managingCoursesForSection.id);
-    }, [managingCoursesForSection, allCourses]);
+        if (!managingCoursesForSection || !allCourses || !subjects || !teachers) return [];
+        return allCourses
+            .filter(course => course.sectionId === managingCoursesForSection.id)
+            .map(course => {
+                const subject = subjects.find(s => s.id === course.subjectId);
+                const teacher = teachers.find(t => t.id === course.teacherId);
+                return {
+                    ...course,
+                    subjectName: subject?.name || 'N/A',
+                    teacherName: teacher ? `${teacher.firstName} ${teacher.lastName}` : 'N/A',
+                }
+            });
+    }, [managingCoursesForSection, allCourses, subjects, teachers]);
 
     const filteredSections = React.useMemo(() => {
         if (!allSections) return [];
@@ -1003,8 +1013,8 @@ function SectionsManager() {
                                     ) : sectionCourses.length > 0 ? (
                                         sectionCourses.map(course => (
                                             <TableRow key={course.id}>
-                                                <TableCell>{course.subjectName || 'N/A'}</TableCell>
-                                                <TableCell>{course.teacherName || 'N/A'}</TableCell>
+                                                <TableCell>{course.subjectName}</TableCell>
+                                                <TableCell>{course.teacherName}</TableCell>
                                                 <TableCell>{course.schedule}</TableCell>
                                                 <TableCell className="text-right">
                                                     <DropdownMenu>
