@@ -772,6 +772,8 @@ function SectionsManager() {
                     ...course,
                     subjectName: subject?.name || 'N/A',
                     teacherName: teacher ? `${teacher.firstName} ${teacher.lastName}` : 'N/A',
+                    // Asegurarse de que teacherId se mantiene en el objeto resultante
+                    teacherId: course.teacherId,
                 }
             });
     }, [managingCoursesForSection, allCourses, subjects, teachers]);
@@ -1084,7 +1086,7 @@ export default function AcademicsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold tracking-tight">Gestión Académica</h1>
-      <Tabs defaultValue="courses">
+      <Tabs defaultValue="sections">
         <TabsList className="grid w-full grid-cols-3">
            <TabsTrigger value="courses">
             <Book className="mr-2 h-4 w-4" />
