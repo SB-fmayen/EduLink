@@ -18,17 +18,18 @@ service cloud.firestore {
 
     function isStaff() {
       let role = getRequesterProfile().data.role;
-      return isSignedIn() && (role == 'admin' || role == 'director');
+      return isSignedIn() && (role == 'admin' || role == 'director' || role == 'teacher');
     }
 
     function isAdmin() {
       return isSignedIn() && getRequesterProfile().data.role == 'admin';
     }
-
-    function isMemberOfSchool(schoolId) {
-      return isSignedIn() && getRequesterProfile().data.schoolId == schoolId;
-    }
     
+    function isManager() {
+        let role = getRequesterProfile().data.role;
+        return isSignedIn() && (role == 'admin' || role == 'director');
+    }
+
     function isTeacherOfCourse(courseId) {
       let courseDoc = get(/databases/$(database)/documents/courses/$(courseId));
       return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
@@ -36,27 +37,30 @@ service cloud.firestore {
 
     // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
     match /subjects/{docId} {
-      allow read, write: if isStaff();
+      allow read: if isSignedIn();
+      allow write: if isManager();
     }
 
     match /grades/{docId} {
-      allow read, write: if isStaff();
+      allow read: if isSignedIn();
+      allow write: if isManager();
     }
     
     match /sections/{docId} {
-      allow read, write: if isStaff();
+      allow read: if isSignedIn();
+      allow write: if isManager();
     }
 
     match /courses/{courseId} {
       allow read: if isSignedIn();
-      allow write: if isStaff();
+      allow write: if isManager();
 
       // Subcolección de estudiantes inscritos en un curso.
       match /students/{studentId} {
-         // El profesor del curso, el staff, o el propio estudiante pueden ver la inscripción.
-         allow get, list: if isTeacherOfCourse(courseId) || isStaff() || isOwner(studentId);
-         // El profesor del curso o el staff pueden inscribir o desinscribir estudiantes.
-         allow create, update, delete: if isTeacherOfCourse(courseId) || isStaff();
+         // El profesor del curso, el staff directivo, o el propio estudiante pueden ver la inscripción.
+         allow get, list: if isTeacherOfCourse(courseId) || isManager() || isOwner(studentId);
+         // El profesor del curso o el staff directivo pueden inscribir, actualizar o desinscribir estudiantes.
+         allow create, update, delete: if isTeacherOfCourse(courseId) || isManager();
       }
     }
 
@@ -69,14 +73,19 @@ service cloud.firestore {
 
     // --- REGLAS PARA LA COLECCIÓN DE USUARIOS ---
     match /users/{userId} {
-      allow get: if isOwner(userId) || isStaff();
+      allow get: if isStaff() || isOwner(userId);
       allow list: if isStaff();
-      allow create: if isOwner(userId) || isStaff();
-      allow update: if isOwner(userId) || isStaff();
-      allow delete: if isOwner(userId) || isStaff();
+      allow create: if isOwner(userId) || isManager();
+      allow update: if isOwner(userId) || isManager();
+      allow delete: if isManager();
+
+      // Subcolección para los cursos asignados a un profesor
+      match /assignedCourses/{courseId} {
+        // Un profesor puede leer sus propios cursos asignados, un manager puede leer los de cualquiera
+        allow read: if isOwner(userId) || isManager();
+        // Solo un manager puede asignar o desasignar cursos a un profesor
+        allow create, delete: if isManager();
+      }
     }
   }
 }
-// --- REGLAS PARA LA COLECCIÓN DE USUARIOS ---
-
-
