@@ -14,7 +14,7 @@ import { Logo } from '@/components/logo';
 import { MainNav } from '@/components/main-nav';
 import { UserNav } from '@/components/user-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, Loader2 } from 'lucide-react'; // Importar Loader2
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
@@ -28,26 +28,23 @@ export default function DashboardLayout({
   const router = useRouter();
 
   React.useEffect(() => {
+    // Si la carga ha terminado y no hay usuario, redirigir al login.
     if (!isUserLoading && !user) {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
 
+  // Mientras carga o si no hay usuario, mostrar un loader simple.
   if (isUserLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="book">
-          <div className="book__pg-shadow"></div>
-          <div className="book__pg"></div>
-          <div className="book__pg book__pg--2"></div>
-          <div className="book__pg book__pg--3"></div>
-          <div className="book__pg book__pg--4"></div>
-          <div className="book__pg book__pg--5"></div>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="ml-4 text-muted-foreground">Cargando...</p>
       </div>
     );
   }
 
+  // Si el usuario está autenticado, renderizar el layout completo.
   return (
     <SidebarProvider>
       <Sidebar>

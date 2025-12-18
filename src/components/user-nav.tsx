@@ -26,9 +26,11 @@ export function UserNav() {
   const auth = useAuth();
   const userAvatar = PlaceHolderImages.find((img) => img.id === 'user-avatar');
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (auth) {
-      signOut(auth);
+      await signOut(auth);
+      // Forzar un refresco de la página para limpiar el estado.
+      window.location.reload();
     }
   };
 

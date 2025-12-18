@@ -22,7 +22,8 @@ export function MainNav() {
   const firestore = useFirestore();
 
   const userDocRef = useMemoFirebase(() => {
-    if (!user?.uid) return null; // <-- CORRECCIÓN CLAVE: Asegurarse de que user.uid exista
+    // CORRECCIÓN: Si el usuario no existe, no intentes crear una referencia.
+    if (!user) return null;
     return doc(firestore, `users/${user.uid}`);
   }, [user, firestore]);
   
@@ -32,6 +33,11 @@ export function MainNav() {
   const accessibleMenuItems = menuItems.filter(item => 
     userRole && item.roles.includes(userRole as any)
   );
+
+  // Si el usuario no ha iniciado sesión, no renderices nada.
+  if (!user) {
+    return null;
+  }
 
   return (
     <SidebarMenu>

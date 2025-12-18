@@ -45,6 +45,7 @@ interface NewUserPayload {
   email: string;
   schoolId: string;
   role: 'student';
+  enrolledCourses: string[]; // <-- NUEVO CAMPO
 }
 
 /**
@@ -81,6 +82,7 @@ export async function createUserSelfAction(
       email,
       role: 'student', // All new users default to 'student'
       schoolId: 'default-school-id', // Assign to a default school
+      enrolledCourses: [], // <-- INICIALIZAR COMO ARRAY VACÍO
     };
 
     await firestore.collection('users').doc(userRecord.uid).set(userPayload);
