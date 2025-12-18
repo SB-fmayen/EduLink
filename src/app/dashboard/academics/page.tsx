@@ -718,21 +718,32 @@ function SectionsManager() {
     
     const executeDeleteCourse = async () => {
         if (!courseToDelete || !firestore) return;
-        
+    
+        const batch = writeBatch(firestore);
+    
         try {
-            const batch = writeBatch(firestore);
-
-            // 1. Referencia al documento del curso principal
+            // 1. Obtener todos los estudiantes inscritos en el curso para eliminarlos
+            const enrollmentsRef = collection(firestore, `courses/${courseToDelete.id}/students`);
+            const enrollmentsSnapshot = await getDocs(enrollmentsRef);
+    
+            enrollmentsSnapshot.forEach(enrollmentDoc => {
+                // Eliminar cada inscripción de estudiante en el lote
+                batch.delete(enrollmentDoc.ref);
+            });
+    
+            // 2. Referencia al documento del curso principal para eliminar
             const courseDocRef = doc(firestore, 'courses', courseToDelete.id);
             batch.delete(courseDocRef);
-
-            // 2. Referencia a la asignación en la subcolección del profesor
+    
+            // 3. Referencia a la asignación en la subcolección del profesor para eliminar
             const teacherCourseRef = doc(firestore, 'users', courseToDelete.teacherId, 'assignedCourses', courseToDelete.id);
             batch.delete(teacherCourseRef);
-
+    
+            // 4. Ejecutar el lote
             await batch.commit();
-
+    
             toast({ title: "Asignación Eliminada", description: "Se ha eliminado el curso de la sección y del profesor." });
+    
         } catch (error) {
             console.error("Error deleting course assignment:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la asignación.' });
