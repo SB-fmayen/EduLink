@@ -33,7 +33,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, setDoc, writeBatch, documentId, deleteDoc, updateDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Role } from '@/lib/roles';
 import { toast } from '@/hooks/use-toast';
@@ -194,61 +194,85 @@ export default function StudentsPage() {
     }
   };
   
-  const handleAssignToSection = async () => {
+const handleAssignToSection = async () => {
     if (!selectedStudent || !selectedSection || !courses || !allSections) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Por favor selecciona un estudiante y una sección.' });
-      return;
+        toast({ variant: 'destructive', title: 'Error', description: 'Por favor selecciona un estudiante y una opción.' });
+        return;
     }
 
-    const sectionData = allSections.find((s) => s.id === selectedSection);
-    if (!sectionData) {
-      toast({ variant: 'destructive', title: 'Error', description: 'La sección seleccionada no es válida.' });
-      return;
-    }
-    
-    const oldSectionId = selectedStudent.sectionId;
-    
-    // Get all courses for the new section
-    const coursesInSection = courses.filter((course) => course.sectionId === selectedSection);
-    const newCourseIds = coursesInSection.map(c => c.id);
-    
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
     const batch = writeBatch(firestore);
 
-    // 1. Update student's main profile with new section and course list
-    batch.update(studentDocRef, { 
-      sectionId: sectionData.id, 
-      gradeId: sectionData.gradeId,
-      enrolledCourses: newCourseIds,
-    });
-    
-    // 2. Un-enroll from old section's courses if changed
-    if (oldSectionId && oldSectionId !== selectedSection) {
-        const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
-        for (const course of oldCourses) {
-            const oldEnrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
-            batch.delete(oldEnrollmentRef);
-        }
-    }
-
-    // 3. Enroll in new section's courses
-    for (const course of coursesInSection) {
-        const enrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
-        batch.set(enrollmentRef, { studentId: selectedStudent.id, sectionId: course.sectionId });
-    }
-
     try {
-        await batch.commit();
-        toast({ title: 'Estudiante Asignado', description: `${selectedStudent.firstName} ha sido inscrito en la nueva sección y sus cursos.` });
+        // --- Caso 1: Des-asignar al estudiante (se seleccionó "Ninguno") ---
+        if (selectedSection === 'none') {
+            const oldSectionId = selectedStudent.sectionId;
+
+            // Si tenía una sección anterior, quitarlo de esos cursos
+            if (oldSectionId) {
+                const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
+                for (const course of oldCourses) {
+                    const oldEnrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
+                    batch.delete(oldEnrollmentRef);
+                }
+            }
+
+            // Actualizar el perfil del estudiante para quitar la sección y los cursos
+            batch.update(studentDocRef, {
+                sectionId: null,
+                gradeId: null,
+                enrolledCourses: [],
+            });
+
+            await batch.commit();
+            toast({ title: 'Asignación Removida', description: `${selectedStudent.firstName} ha sido des-asignado de su sección.` });
+
+        } else {
+            // --- Caso 2: Asignar a una nueva sección ---
+            const sectionData = allSections.find((s) => s.id === selectedSection);
+            if (!sectionData) {
+                toast({ variant: 'destructive', title: 'Error', description: 'La sección seleccionada no es válida.' });
+                return;
+            }
+
+            const oldSectionId = selectedStudent.sectionId;
+            const coursesInSection = courses.filter((course) => course.sectionId === selectedSection);
+            const newCourseIds = coursesInSection.map(c => c.id);
+
+            // 1. Actualizar el perfil del estudiante con la nueva sección y lista de cursos
+            batch.update(studentDocRef, {
+                sectionId: sectionData.id,
+                gradeId: sectionData.gradeId,
+                enrolledCourses: newCourseIds,
+            });
+
+            // 2. Si tenía una sección anterior diferente, quitarlo de los cursos antiguos
+            if (oldSectionId && oldSectionId !== selectedSection) {
+                const oldCourses = courses.filter(c => c.sectionId === oldSectionId);
+                for (const course of oldCourses) {
+                    const oldEnrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
+                    batch.delete(oldEnrollmentRef);
+                }
+            }
+
+            // 3. Inscribirlo en los cursos de la nueva sección
+            for (const course of coursesInSection) {
+                const enrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
+                batch.set(enrollmentRef, { studentId: selectedStudent.id, sectionId: course.sectionId });
+            }
+            
+            await batch.commit();
+            toast({ title: 'Estudiante Asignado', description: `${selectedStudent.firstName} ha sido inscrito en la nueva sección y sus cursos.` });
+        }
     } catch (error) {
         console.error("Error assigning student to section:", error)
-        toast({ variant: "destructive", title: "Error de Asignación", description: "No se pudo completar la inscripción. Revisa los permisos." });
+        toast({ variant: "destructive", title: "Error de Asignación", description: "No se pudo completar la operación. Revisa los permisos." });
+    } finally {
+        setIsAssignDialogOpen(false);
+        setSelectedSection('');
+        setSelectedStudent(null);
     }
-    
-    setIsAssignDialogOpen(false);
-    setSelectedSection('');
-    setSelectedStudent(null);
-  };
+};
   
   const handleAssignClick = (student: UserData) => {
     setSelectedStudent(student);
@@ -383,6 +407,7 @@ export default function StudentsPage() {
               <Select onValueChange={setSelectedSection} value={selectedSection}>
                 <SelectTrigger id="section"><SelectValue placeholder="Selecciona una sección" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Ninguno</SelectItem>
                   {allSections?.map((section) => (<SelectItem key={section.id} value={section.id}>{gradesMap[section.gradeId] || 'Grado'} - {section.name}</SelectItem>))}
                 </SelectContent>
               </Select>
