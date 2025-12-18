@@ -207,6 +207,8 @@ export default function StudentsPage() {
     }
     
     const oldSectionId = selectedStudent.sectionId;
+    
+    // Get all courses for the new section
     const coursesInSection = courses.filter((course) => course.sectionId === selectedSection);
     const newCourseIds = coursesInSection.map(c => c.id);
     
