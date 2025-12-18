@@ -62,6 +62,7 @@ interface UserData {
   schoolId: string;
   sectionId?: string;
   gradeId?: string;
+  enrolledCourses?: string[];
 }
 
 interface SectionData {
@@ -99,7 +100,7 @@ export default function StudentsPage() {
   const [selectedSectionFilter, setSelectedSectionFilter] = React.useState<string>('all');
 
   const studentsQuery = useMemoFirebase(() => {
-    if (userRole === 'admin') {
+    if (userRole === 'admin' || userRole === 'director') {
       return query(collection(firestore, 'users'), where('role', '==', 'student'));
     }
     return null;
@@ -172,13 +173,11 @@ export default function StudentsPage() {
         email: values.email,
         role: 'student',
         schoolId: schoolId,
+        enrolledCourses: [],
       };
       
       const userDocRef = doc(firestore, 'users', uid);
       batch.set(userDocRef, userPayload);
-      
-      // We don't need to create in a separate `students` collection if we simplify
-      // Just query the `users` collection for role: 'student'
       
       await batch.commit();
       
@@ -209,12 +208,17 @@ export default function StudentsPage() {
     
     const oldSectionId = selectedStudent.sectionId;
     const coursesInSection = courses.filter((course) => course.sectionId === selectedSection);
+    const newCourseIds = coursesInSection.map(c => c.id);
     
     const studentDocRef = doc(firestore, 'users', selectedStudent.id);
     const batch = writeBatch(firestore);
 
-    // 1. Update student's main profile
-    batch.update(studentDocRef, { sectionId: sectionData.id, gradeId: sectionData.gradeId });
+    // 1. Update student's main profile with new section and course list
+    batch.update(studentDocRef, { 
+      sectionId: sectionData.id, 
+      gradeId: sectionData.gradeId,
+      enrolledCourses: newCourseIds,
+    });
     
     // 2. Un-enroll from old section's courses if changed
     if (oldSectionId && oldSectionId !== selectedSection) {
