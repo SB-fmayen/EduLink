@@ -37,11 +37,13 @@ service cloud.firestore {
       return isSignedIn() && (role == 'admin' || role == 'director' || role == 'teacher');
     }
 
+    function getCourse(courseId) {
+      return get(/databases/$(database)/documents/courses/$(courseId));
+    }
+
     function isTeacherOfCourse(courseId) {
-      // Esta función es difícil de hacer segura sin más contexto, 
-      // la lógica de autorización se basará principalmente en roles.
-      // Se podría reimplementar si fuera necesario, pero por ahora se prefiere la simplicidad.
-      return isStaff(); 
+      let courseDoc = getCourse(courseId);
+      return courseDoc.data.teacherId == request.auth.uid;
     }
 
     // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
@@ -51,8 +53,9 @@ service cloud.firestore {
     }
 
     match /grades/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isManager(); // Solo admins y directores
+      // CORRECCION: Cualquier staff puede leer y escribir. Solo admins pueden eliminar.
+      allow read, write: if isStaff();
+      allow delete: if isManager();
     }
     
     match /sections/{docId} {
@@ -78,7 +81,10 @@ service cloud.firestore {
     // Permite a un estudiante ver sus propias inscripciones en todos los cursos
     // y al personal (staff) ver cualquier inscripción.
     match /{path=**}/students/{studentDocId} {
-        allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) || isStaff();
+        // CORRECCIÓN: El profesor del curso también puede leer la inscripción
+        allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) 
+                    || (isStaff() && isTeacherOfCourse(resource.data.courseId)) 
+                    || isManager();
     }
 
     // --- REGLAS PARA LA COLECCIÓN DE USUARIOS ---

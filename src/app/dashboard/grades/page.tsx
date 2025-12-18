@@ -47,6 +47,11 @@ interface Course {
     teacherId: string;
 }
 
+interface AssignedCourse {
+    id: string; 
+    courseId: string;
+}
+
 interface Student {
     id: string;
     firstName: string;
@@ -75,19 +80,30 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
     const [selectedCourseId, setSelectedCourseId] = React.useState<string>('');
     const [grades, setGrades] = React.useState<Record<string, number | string>>({});
 
-    // 1. Obtener los cursos del profesor
-    const teacherCoursesQuery = useMemoFirebase(() => {
+    // 1. Obtener los IDs de los cursos asignados desde la subcolección
+    const assignedCoursesQuery = useMemoFirebase(() => {
         if (user) {
-            return query(
-                collection(firestore, `courses`),
-                where('teacherId', '==', user.uid)
-            );
+            return collection(firestore, `users/${user.uid}/assignedCourses`);
         }
         return null;
     }, [firestore, user]);
+    const { data: assignedCourses, isLoading: isLoadingAssigned } = useCollection<AssignedCourse>(assignedCoursesQuery);
+    
+    const courseIds = React.useMemo(() => {
+        return assignedCourses ? assignedCourses.map(ac => ac.courseId) : [];
+    }, [assignedCourses]);
+
+    // 2. Obtener los detalles de los cursos asignados usando una consulta 'in'
+    const teacherCoursesQuery = useMemoFirebase(() => {
+        if (courseIds.length > 0) {
+            // Firestore 'in' queries are limited to 30 items.
+            return query(collection(firestore, 'courses'), where(documentId(), 'in', courseIds.slice(0, 30)));
+        }
+        return null;
+    }, [firestore, courseIds]);
     const { data: teacherCourses, isLoading: isLoadingCourses } = useCollection<Course>(teacherCoursesQuery);
 
-    // 2. Obtener estudiantes del curso seleccionado
+    // 3. Obtener estudiantes del curso seleccionado
     const enrolledStudentsRef = useMemoFirebase(() => {
         if (selectedCourseId) {
             return collection(firestore, `courses/${selectedCourseId}/students`);
@@ -119,8 +135,6 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
         Object.entries(grades).forEach(([studentId, score]) => {
             if (score === '' || typeof score !== 'number') return;
             
-            // Aquí definiríamos una referencia única para la calificación, por ejemplo, por trimestre.
-            // Para este ejemplo, usaremos un ID simple.
             const gradeId = `${selectedCourseId}-${studentId}-term1`;
             const gradeRef = doc(firestore, `grades`, gradeId);
 
@@ -139,6 +153,8 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
             description: 'Las calificaciones han sido guardadas correctamente.',
         });
     };
+    
+    const isLoading = isLoadingAssigned || isLoadingCourses;
 
     return (
         <Card>
@@ -148,9 +164,9 @@ function TeacherGradesView({ profile }: { profile: UserProfile }) {
                     Selecciona un curso para ver los estudiantes y registrar sus calificaciones.
                 </CardDescription>
                 <div className="pt-4 flex justify-between items-center">
-                    <Select onValueChange={setSelectedCourseId} value={selectedCourseId} disabled={isLoadingCourses}>
+                    <Select onValueChange={setSelectedCourseId} value={selectedCourseId} disabled={isLoading}>
                         <SelectTrigger className="w-full md:w-1/2">
-                            <SelectValue placeholder={isLoadingCourses ? "Cargando cursos..." : "Selecciona un curso"} />
+                            <SelectValue placeholder={isLoading ? "Cargando cursos..." : "Selecciona un curso"} />
                         </SelectTrigger>
                         <SelectContent>
                             {teacherCourses?.map(course => (
