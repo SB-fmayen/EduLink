@@ -179,18 +179,13 @@ function StudentDashboard({ userProfile }: { userProfile: UserProfile }) {
 function TeacherDashboard({ user }: { user: any }) {
   const firestore = useFirestore();
 
-  // 1. Query the subcollection for assigned course pointers
   const assignedCoursesQuery = useMemoFirebase(() => {
+    if (!user) return null;
     return collection(firestore, `users/${user.uid}/assignedCourses`);
-  }, [firestore, user.uid]);
+  }, [firestore, user]);
   
   const { data: assignedCourses, isLoading } = useCollection<AssignedCourse>(assignedCoursesQuery);
   
-  // 2. Extract the course IDs from the subcollection documents
-  const courseIds = React.useMemo(() => {
-    return assignedCourses ? assignedCourses.map(ac => ac.courseId) : [];
-  }, [assignedCourses]);
-
   return (
     <>
       <div className="flex justify-between items-center mb-6">
@@ -210,9 +205,9 @@ function TeacherDashboard({ user }: { user: any }) {
         </div>
       ) : (
         <>
-          {courseIds && courseIds.length > 0 ? (
+          {assignedCourses && assignedCourses.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {courseIds.map(courseId => <CourseCard key={courseId} courseId={courseId} />)}
+              {assignedCourses.map(assigned => <CourseCard key={assigned.id} courseId={assigned.courseId} />)}
             </div>
           ) : (
              <Card className="col-span-full text-center py-10">
@@ -271,3 +266,4 @@ export default function DashboardPage() {
 
   return <p>Rol de usuario no reconocido.</p>;
 }
+
