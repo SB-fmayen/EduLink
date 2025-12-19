@@ -37,7 +37,7 @@ interface Course {
     id: string;
     subjectName: string;
     sectionName: string;
-    gradeName?: string; // <-- NUEVO
+    gradeName?: string;
     teacherId: string;
     sectionId: string;
 }
@@ -185,7 +185,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         return <p>No se pudo cargar la información del curso o del usuario.</p>
     }
     
-    const courseTitle = `${course.subjectName} - ${course.gradeName || ''} ${course.sectionName}`.replace(' -  ', ' - ');
+    const courseTitle = `${course.subjectName} - ${course.gradeName || ''} ${course.sectionName}`.replace(/ -  | - $/, ' - ').trim();
 
 
     return (

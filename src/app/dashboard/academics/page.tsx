@@ -81,7 +81,7 @@ interface CourseData {
     subjectName?: string;
     sectionId: string;
     sectionName?: string;
-    gradeName?: string; // <-- NUEVO
+    gradeName?: string;
     teacherId: string;
     teacherName?: string;
     schedule: string;
