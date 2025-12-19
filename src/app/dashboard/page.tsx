@@ -76,6 +76,9 @@ function CourseCard({ courseId }: CourseCardProps) {
 
   if (!course) return null;
 
+  const fullSectionName = [course.gradeName, course.sectionName].filter(Boolean).join(' - ');
+
+
   return (
     <Card className="overflow-hidden flex flex-col group">
       <Link href={`/dashboard/courses/${course.id}`} className="flex flex-col flex-grow">
@@ -106,10 +109,8 @@ function CourseCard({ courseId }: CourseCardProps) {
                 <h3 className="font-bold text-primary uppercase truncate" title={course.subjectName}>
                     {course.subjectName || 'Curso sin nombre'}
                 </h3>
-                <p className="text-sm text-muted-foreground truncate" title={course.gradeName && course.sectionName ? `${course.gradeName} - ${course.sectionName}` : course.sectionName}>
-                  {course.gradeName && course.sectionName 
-                    ? `${course.gradeName} - ${course.sectionName}` 
-                    : course.sectionName || 'Sección no asignada'}
+                 <p className="text-sm text-muted-foreground truncate" title={fullSectionName}>
+                  {fullSectionName || 'Sección no asignada'}
                 </p>
             </div>
             <div className="flex items-center gap-4 text-muted-foreground pt-4 mt-auto">
