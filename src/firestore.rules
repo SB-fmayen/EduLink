@@ -68,3 +68,6 @@ service cloud.firestore {
     }
   }
 }
+
+
+      // REGLA DE DEPURACIÓN: Permitir a cualquier usuario autenticado leer los cursos asignados.
