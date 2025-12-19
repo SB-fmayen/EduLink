@@ -34,6 +34,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
     AlertDialog,
@@ -643,22 +644,34 @@ function SectionsManager() {
 
     const onCourseAssignmentSubmit = async (values: z.infer<typeof courseAssignmentFormSchema>) => {
         if (!managingCoursesForSection || !coursesRef || !subjects || !teachers || !firestore || !grades) return;
-        
+    
         const subject = subjects.find(s => s.id === values.subjectId);
         const teacher = teachers.find(t => t.id === values.teacherId);
+        // Encuentra el grado usando el gradeId de la sección que se está administrando.
         const grade = grades.find(g => g.id === managingCoursesForSection.gradeId);
-
+    
         if (!subject || !teacher || !grade) {
-            toast({ variant: "destructive", title: "Error", description: "La asignatura, profesor o grado seleccionado no son válidos." });
+            toast({ variant: "destructive", title: "Error", description: "La asignatura, profesor o grado de la sección no son válidos." });
             return;
         }
         
         const schedule = `${values.day} ${values.hour}:${values.minute}`;
         const batch = writeBatch(firestore);
-
+    
         try {
+            const coursePayload = {
+                subjectId: values.subjectId,
+                teacherId: values.teacherId,
+                schedule,
+                sectionId: managingCoursesForSection.id,
+                sectionName: managingCoursesForSection.name,
+                gradeName: grade.name, // Asegurar que el gradeName del grado correcto se guarda.
+                subjectName: subject.name,
+                teacherName: `${teacher.firstName} ${teacher.lastName}`,
+            };
+    
             if (editingCourse) {
-                // Si estamos editando, puede que el profesor haya cambiado.
+                // --- ACTUALIZAR CURSO ---
                 const oldTeacherId = editingCourse.teacherId;
                 const newTeacherId = values.teacherId;
     
@@ -670,14 +683,7 @@ function SectionsManager() {
     
                 // 2. Actualizar el documento del curso
                 const courseDocRef = doc(firestore, 'courses', editingCourse.id);
-                batch.update(courseDocRef, {
-                    subjectId: values.subjectId,
-                    teacherId: newTeacherId,
-                    schedule,
-                    subjectName: subject.name,
-                    teacherName: `${teacher.firstName} ${teacher.lastName}`,
-                    gradeName: grade.name, // Asegurarse de que el gradeName se actualiza
-                });
+                batch.update(courseDocRef, coursePayload);
     
                 // 3. Crear (o sobreescribir) la referencia en la subcolección del nuevo profesor
                 const newTeacherCourseRef = doc(firestore, 'users', newTeacherId, 'assignedCourses', editingCourse.id);
@@ -686,19 +692,12 @@ function SectionsManager() {
                 toast({ title: "Asignación Actualizada", description: "El curso ha sido actualizado." });
     
             } else {
-                // Creando un nuevo curso
+                // --- CREAR NUEVO CURSO ---
                 const newCourseRef = doc(collection(firestore, 'courses'));
     
                 // 1. Crear el nuevo documento de curso
                 batch.set(newCourseRef, {
-                    subjectId: values.subjectId,
-                    teacherId: values.teacherId,
-                    schedule,
-                    sectionId: managingCoursesForSection.id,
-                    sectionName: managingCoursesForSection.name,
-                    gradeName: grade.name, // Añadir el nombre del grado
-                    subjectName: subject.name,
-                    teacherName: `${teacher.firstName} ${teacher.lastName}`,
+                    ...coursePayload,
                     createdAt: serverTimestamp(),
                 });
     
@@ -712,7 +711,7 @@ function SectionsManager() {
             await batch.commit();
             courseAssignmentForm.reset();
             setEditingCourse(null);
-
+    
         } catch(error) {
             console.error("Error saving course assignment:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la asignación del curso.' });
@@ -1117,5 +1116,3 @@ export default function AcademicsPage() {
     </div>
   );
 }
-
-    
