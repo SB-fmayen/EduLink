@@ -54,9 +54,8 @@ service cloud.firestore {
     }
 
     match /grades/{docId} {
-      // CORRECCION: Cualquier staff puede leer y escribir. Solo admins pueden eliminar.
-      allow read, write: if isStaff();
-      allow delete: if isManager();
+      allow read: if isSignedIn();
+      allow write: if isManager();
     }
     
     match /sections/{docId} {
@@ -75,6 +74,8 @@ service cloud.firestore {
          allow read: if isStaff() || isTeacherOfCourse(courseId) || isOwner(studentId);
          // El staff puede inscribir, actualizar o desinscribir estudiantes.
          allow write: if isStaff();
+         // El staff puede eliminar inscripciones (parte del lote de eliminación de cursos)
+         allow delete: if isStaff();
       }
     }
 
