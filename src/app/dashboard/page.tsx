@@ -29,7 +29,7 @@ interface Course {
     subjectName?: string;
     sectionId: string;
     teacherId: string;
-    gradeId?: string;
+    gradeName?: string; // CAMBIO: Asegurarse que gradeName esté en la interfaz
     sectionName?: string;
 }
 
@@ -106,8 +106,12 @@ function CourseCard({ courseId }: CourseCardProps) {
                 <h3 className="font-bold text-primary uppercase truncate" title={course.subjectName}>
                     {course.subjectName || 'Curso sin nombre'}
                 </h3>
-                <p className="text-sm text-muted-foreground">{course.subjectId}</p>
-                <p className="text-xs text-muted-foreground">2-Semestre-Trimestre</p>
+                {/* CAMBIO: Mostrar el grado y la sección en lugar del ID y texto estático */}
+                <p className="text-sm text-muted-foreground truncate">
+                  {course.gradeName && course.sectionName 
+                    ? `${course.gradeName} - ${course.sectionName}` 
+                    : course.sectionName || 'Sección no asignada'}
+                </p>
             </div>
             <div className="flex items-center gap-4 text-muted-foreground pt-4 mt-auto">
               <BarChart2 className="h-5 w-5 hover:text-primary cursor-pointer" />
@@ -266,4 +270,3 @@ export default function DashboardPage() {
 
   return <p>Rol de usuario no reconocido.</p>;
 }
-
