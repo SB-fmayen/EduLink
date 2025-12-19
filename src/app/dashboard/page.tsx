@@ -29,7 +29,7 @@ interface Course {
     subjectName?: string;
     sectionId: string;
     teacherId: string;
-    gradeName?: string; // CAMBIO: Asegurarse que gradeName esté en la interfaz
+    gradeName?: string; 
     sectionName?: string;
 }
 
@@ -106,8 +106,7 @@ function CourseCard({ courseId }: CourseCardProps) {
                 <h3 className="font-bold text-primary uppercase truncate" title={course.subjectName}>
                     {course.subjectName || 'Curso sin nombre'}
                 </h3>
-                {/* CAMBIO: Mostrar el grado y la sección en lugar del ID y texto estático */}
-                <p className="text-sm text-muted-foreground truncate">
+                <p className="text-sm text-muted-foreground truncate" title={course.gradeName && course.sectionName ? `${course.gradeName} - ${course.sectionName}` : course.sectionName}>
                   {course.gradeName && course.sectionName 
                     ? `${course.gradeName} - ${course.sectionName}` 
                     : course.sectionName || 'Sección no asignada'}
