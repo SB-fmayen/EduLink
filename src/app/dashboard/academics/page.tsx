@@ -677,7 +677,7 @@ function SectionsManager() {
                     schedule,
                     subjectName: subject.name,
                     teacherName: `${teacher.firstName} ${teacher.lastName}`,
-                    gradeName: grade.name, // Mantener actualizado el nombre del grado
+                    gradeName: grade.name, // Asegurarse de que el gradeName se actualiza
                 });
     
                 // 3. Crear (o sobreescribir) la referencia en la subcolección del nuevo profesor
