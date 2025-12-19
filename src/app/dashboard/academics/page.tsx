@@ -81,6 +81,7 @@ interface CourseData {
     subjectName?: string;
     sectionId: string;
     sectionName?: string;
+    gradeName?: string; // <-- NUEVO
     teacherId: string;
     teacherName?: string;
     schedule: string;
@@ -642,13 +643,14 @@ function SectionsManager() {
     };
 
     const onCourseAssignmentSubmit = async (values: z.infer<typeof courseAssignmentFormSchema>) => {
-        if (!managingCoursesForSection || !coursesRef || !subjects || !teachers || !firestore) return;
+        if (!managingCoursesForSection || !coursesRef || !subjects || !teachers || !firestore || !grades) return;
         
         const subject = subjects.find(s => s.id === values.subjectId);
         const teacher = teachers.find(t => t.id === values.teacherId);
+        const grade = grades.find(g => g.id === managingCoursesForSection.gradeId);
 
-        if (!subject || !teacher) {
-            toast({ variant: "destructive", title: "Error", description: "La asignatura o el profesor seleccionado no son válidos." });
+        if (!subject || !teacher || !grade) {
+            toast({ variant: "destructive", title: "Error", description: "La asignatura, profesor o grado seleccionado no son válidos." });
             return;
         }
         
@@ -675,6 +677,7 @@ function SectionsManager() {
                     schedule,
                     subjectName: subject.name,
                     teacherName: `${teacher.firstName} ${teacher.lastName}`,
+                    gradeName: grade.name, // Mantener actualizado el nombre del grado
                 });
     
                 // 3. Crear (o sobreescribir) la referencia en la subcolección del nuevo profesor
@@ -694,6 +697,7 @@ function SectionsManager() {
                     schedule,
                     sectionId: managingCoursesForSection.id,
                     sectionName: managingCoursesForSection.name,
+                    gradeName: grade.name, // Añadir el nombre del grado
                     subjectName: subject.name,
                     teacherName: `${teacher.firstName} ${teacher.lastName}`,
                     createdAt: serverTimestamp(),

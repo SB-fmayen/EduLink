@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React from 'react';
@@ -39,6 +37,7 @@ interface Course {
     id: string;
     subjectName: string;
     sectionName: string;
+    gradeName?: string; // <-- NUEVO
     teacherId: string;
     sectionId: string;
 }
@@ -167,6 +166,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
 
     const canViewStudents = React.useMemo(() => {
         if (isCoreDataLoading || !userProfile || !course) return false;
+        // Permite la vista si es admin o si es el profesor asignado a este curso.
         return userProfile.role === 'admin' || user?.uid === course.teacherId;
     }, [isCoreDataLoading, userProfile, course, user]);
 
@@ -184,10 +184,13 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     if (!course || !user || !userProfile) {
         return <p>No se pudo cargar la información del curso o del usuario.</p>
     }
+    
+    const courseTitle = `${course.subjectName} - ${course.gradeName || ''} ${course.sectionName}`.replace(' -  ', ' - ');
+
 
     return (
         <div className="flex flex-col gap-6">
-            <h1 className="text-3xl font-bold tracking-tight">{course.subjectName} - {course.sectionName}</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{courseTitle}</h1>
             <Tabs defaultValue="students" className="w-full">
                 <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="students">

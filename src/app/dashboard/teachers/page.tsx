@@ -46,13 +46,19 @@ import { toast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createUserAction } from '@/app/actions/create-user-action';
 
-
 interface UserData {
   id: string;
   firstName: string;
   lastName: string;
   email: string;
   role: Role;
+}
+
+interface Course {
+    id: string;
+    subjectName: string;
+    sectionName: string;
+    teacherId: string;
 }
 
 const teacherFormSchema = z.object({
@@ -72,19 +78,25 @@ export default function TeachersPage() {
   const { user } = useUser();
   const router = useRouter();
 
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [selectedCourse, setSelectedCourse] = React.useState('all');
+  const [selectedSection, setSelectedSection] = React.useState('all');
+
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, `users/${user.uid}`) : null, [user, firestore]);
   const { data: userData } = useDoc<{ role: Role }>(userDocRef);
   const userRole = userData?.role;
 
   const teachersQuery = useMemoFirebase(() => {
-    // Only admins and directors can see all teachers
     if (userRole === 'admin' || userRole === 'director') { 
       return query(collection(firestore, 'users'), where('role', '==', 'teacher'));
     }
     return null;
   }, [firestore, userRole]);
 
-  const { data: teachers, isLoading } = useCollection<UserData>(teachersQuery);
+  const coursesQuery = useMemoFirebase(() => collection(firestore, 'courses'), [firestore]);
+
+  const { data: teachers, isLoading: isLoadingTeachers } = useCollection<UserData>(teachersQuery);
+  const { data: courses, isLoading: isLoadingCourses } = useCollection<Course>(coursesQuery);
 
   const [isModifyDialogOpen, setIsModifyDialogOpen] = React.useState(false);
   const [isNewTeacherDialogOpen, setIsNewTeacherDialogOpen] = React.useState(false);
@@ -93,28 +105,58 @@ export default function TeachersPage() {
 
   const modifyForm = useForm<z.infer<typeof teacherFormSchema>>({
     resolver: zodResolver(teacherFormSchema),
-    defaultValues: {
-      firstName: '',
-      lastName: '',
-    },
+    defaultValues: { firstName: '', lastName: '' },
   });
 
   const newTeacherForm = useForm<z.infer<typeof newTeacherFormSchema>>({
     resolver: zodResolver(newTeacherFormSchema),
-    defaultValues: {
-      firstName: '',
-      lastName: '',
-      email: '',
-      password: '',
-    },
+    defaultValues: { firstName: '', lastName: '', email: '', password: '' },
   });
+  
+  const courseOptions = React.useMemo(() => [
+      { value: 'all', label: 'Todos los Cursos' },
+      ...Array.from(new Set(courses?.map(c => c.subjectName))).map(name => ({ value: name, label: name }))
+  ], [courses]);
+
+  const sectionOptions = React.useMemo(() => [
+      { value: 'all', label: 'Todas las Secciones' },
+      ...Array.from(new Set(courses?.map(c => c.sectionName))).map(name => ({ value: name, label: name }))
+  ], [courses]);
+
+  const filteredTeachers = React.useMemo(() => {
+    if (!teachers || !courses) return [];
+
+    const teacherCoursesMap = new Map<string, Course[]>();
+    courses.forEach(course => {
+        if (!teacherCoursesMap.has(course.teacherId)) {
+            teacherCoursesMap.set(course.teacherId, []);
+        }
+        teacherCoursesMap.get(course.teacherId)!.push(course);
+    });
+
+    return teachers.filter(teacher => {
+        const searchMatch = 
+            teacher.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            teacher.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const teacherCourses = teacherCoursesMap.get(teacher.id) || [];
+        
+        const courseMatch = 
+            selectedCourse === 'all' || 
+            teacherCourses.some(c => c.subjectName === selectedCourse);
+            
+        const sectionMatch = 
+            selectedSection === 'all' || 
+            teacherCourses.some(c => c.sectionName === selectedSection);
+
+        return searchMatch && courseMatch && sectionMatch;
+    });
+  }, [teachers, courses, searchTerm, selectedCourse, selectedSection]);
 
   React.useEffect(() => {
     if (selectedTeacher) {
-      modifyForm.reset({
-        firstName: selectedTeacher.firstName,
-        lastName: selectedTeacher.lastName,
-      });
+      modifyForm.reset({ firstName: selectedTeacher.firstName, lastName: selectedTeacher.lastName });
     }
   }, [selectedTeacher, modifyForm]);
   
@@ -129,47 +171,31 @@ export default function TeachersPage() {
 
   const onModifySubmit = async (values: z.infer<typeof teacherFormSchema>) => {
     if (!selectedTeacher) return;
-
     const teacherDocRef = doc(firestore, 'users', selectedTeacher.id);
-    const batch = writeBatch(firestore);
-    batch.update(teacherDocRef, values);
-
     try {
-        await batch.commit();
-        toast({
-            title: "Profesor Actualizado",
-            description: "Los datos del profesor han sido actualizados.",
-        });
+        await writeBatch(firestore).update(teacherDocRef, values).commit();
+        toast({ title: "Profesor Actualizado", description: "Los datos del profesor han sido actualizados." });
     } catch (error) {
         console.error("Error updating teacher:", error);
         toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar la información del profesor." });
     }
-    
     setIsModifyDialogOpen(false);
   };
 
   const onNewTeacherSubmit = async (values: z.infer<typeof newTeacherFormSchema>) => {
     try {
-      // 1. Llama a la Server Action para crear el usuario en Firebase Auth
       const { uid, error: authError } = await createUserAction(values.email, values.password);
   
       if (authError) {
-        if (authError.code === 'auth/email-already-in-use') {
-          newTeacherForm.setError('email', { type: 'manual', message: 'Este correo ya está en uso.' });
-        } else {
-           toast({ variant: 'destructive', title: 'Error de Autenticación', description: authError.message });
-        }
+        toast({ variant: 'destructive', title: 'Error de Autenticación', description: authError.code === 'auth/email-already-in-use' ? 'Este correo ya está en uso.' : authError.message });
         return;
       }
-  
       if (!uid) {
         toast({ variant: 'destructive', title: 'Error de Creación', description: 'No se pudo obtener el ID del nuevo usuario.' });
         return;
       }
       
-      // 2. Si la autenticación es exitosa, crea los documentos en Firestore
-      const batch = writeBatch(firestore);
-      const userPayload: Omit<UserData, 'id' | 'schoolId'> & {role: 'teacher', schoolId: string} = {
+      const userPayload = {
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
@@ -177,25 +203,19 @@ export default function TeachersPage() {
         schoolId: 'default-school-id',
       };
       
-      const userDocRef = doc(firestore, 'users', uid);
-      batch.set(userDocRef, userPayload);
+      await writeBatch(firestore).set(doc(firestore, 'users', uid), userPayload).commit();
       
-      await batch.commit();
-      
-      toast({
-        title: 'Profesor Creado',
-        description: 'La cuenta y el perfil del profesor han sido creados correctamente.'
-      });
+      toast({ title: 'Profesor Creado', description: 'La cuenta y el perfil del profesor han sido creados.' });
       setIsNewTeacherDialogOpen(false);
       newTeacherForm.reset();
-  
-    } catch (dbError: any) {
-      console.error("Error al escribir en Firestore:", dbError);
-      toast({ variant: 'destructive', title: 'Error de Base de Datos', description: 'El usuario fue autenticado pero no se pudo guardar su perfil. Contacta a soporte.' });
+    } catch (dbError) {
+      console.error("Error writing to Firestore:", dbError);
+      toast({ variant: 'destructive', title: 'Error de Base de Datos', description: 'El usuario fue autenticado pero no se pudo guardar su perfil.' });
     }
   };
 
   const canManageTeachers = userRole === 'admin' || userRole === 'director';
+  const isLoading = isLoadingTeachers || isLoadingCourses;
   
   return (
     <div className="flex flex-col gap-6">
@@ -208,12 +228,39 @@ export default function TeachersPage() {
           </Button>
         )}
       </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Listado de Profesores</CardTitle>
-          <CardDescription>
-            Consulta y administra la información de los profesores.
-          </CardDescription>
+            <CardTitle>Listado de Profesores</CardTitle>
+            <CardDescription>Consulta y administra la información de los profesores.</CardDescription>
+            <div className="flex items-center gap-4 pt-4">
+                <Input 
+                    placeholder="Buscar por nombre, apellido o email..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="max-w-sm"
+                />
+                <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+                    <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Filtrar por curso" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {courseOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <Select value={selectedSection} onValueChange={setSelectedSection}>
+                    <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Filtrar por sección" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {sectionOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -222,44 +269,25 @@ export default function TeachersPage() {
                 <TableHead>Nombre</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Rol</TableHead>
-                <TableHead>
-                  <span className="sr-only">Acciones</span>
-                </TableHead>
+                <TableHead><span className="sr-only">Acciones</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center">
-                    Cargando profesores...
-                  </TableCell>
-                </TableRow>
-              ) : teachers && teachers.length > 0 ? (
-                teachers.map((teacher) => (
+                <TableRow><TableCell colSpan={4} className="text-center">Cargando...</TableCell></TableRow>
+              ) : filteredTeachers.length > 0 ? (
+                filteredTeachers.map((teacher) => (
                   <TableRow key={teacher.id}>
-                    <TableCell className="font-medium">
-                      {teacher.firstName} {teacher.lastName}
-                    </TableCell>
+                    <TableCell className="font-medium">{teacher.firstName} {teacher.lastName}</TableCell>
                     <TableCell>{teacher.email}</TableCell>
-                    <TableCell>
-                      <Badge variant="default">{teacher.role}</Badge>
-                    </TableCell>
+                    <TableCell><Badge variant="default">{teacher.role}</Badge></TableCell>
                     <TableCell className="text-right">
                       {canManageTeachers && (
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                              <span className="sr-only">Abrir menú</span>
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Abrir</span><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleModifyClick(teacher)}>
-                              Modificar datos
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDetailsClick(teacher.id)}>
-                              Ver Detalles
-                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleModifyClick(teacher)}>Modificar</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDetailsClick(teacher.id)}>Ver Detalles</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}
@@ -267,11 +295,7 @@ export default function TeachersPage() {
                   </TableRow>
                 ))
               ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center">
-                    No hay profesores registrados o no tienes permiso para verlos.
-                  </TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={4} className="text-center h-24">No se encontraron profesores con los filtros actuales.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -282,29 +306,13 @@ export default function TeachersPage() {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Modificar datos del Profesor</DialogTitle>
-                <DialogDescription>
-                    Actualiza la información para {selectedTeacher?.firstName} {selectedTeacher?.lastName}.
-                </DialogDescription>
+                <DialogDescription>Actualiza la información para {selectedTeacher?.firstName} {selectedTeacher?.lastName}.</DialogDescription>
             </DialogHeader>
             <Form {...modifyForm}>
                 <form onSubmit={modifyForm.handleSubmit(onModifySubmit)} className="grid gap-4 py-4">
-                    <FormField
-                        control={modifyForm.control}
-                        name="firstName"
-                        render={({ field }) => (
-                            <FormItem><FormLabel>Nombre</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                        )}
-                    />
-                     <FormField
-                        control={modifyForm.control}
-                        name="lastName"
-                        render={({ field }) => (
-                            <FormItem><FormLabel>Apellido</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                        )}
-                    />
-                    <DialogFooter>
-                        <Button type="submit">Guardar Cambios</Button>
-                    </DialogFooter>
+                    <FormField control={modifyForm.control} name="firstName" render={({ field }) => (<FormItem><FormLabel>Nombre</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={modifyForm.control} name="lastName" render={({ field }) => (<FormItem><FormLabel>Apellido</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <DialogFooter><Button type="submit">Guardar Cambios</Button></DialogFooter>
                 </form>
             </Form>
         </DialogContent>
@@ -314,9 +322,7 @@ export default function TeachersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Crear Nuevo Profesor</DialogTitle>
-            <DialogDescription>
-              Introduce los datos para crear una nueva cuenta de profesor.
-            </DialogDescription>
+            <DialogDescription>Introduce los datos para crear una nueva cuenta de profesor.</DialogDescription>
           </DialogHeader>
           <Form {...newTeacherForm}>
             <form onSubmit={newTeacherForm.handleSubmit(onNewTeacherSubmit)} className="grid gap-4 py-4">
@@ -338,9 +344,7 @@ export default function TeachersPage() {
                 </FormItem>
               )} />
               <DialogFooter>
-                <Button type="submit" disabled={newTeacherForm.formState.isSubmitting}>
-                  {newTeacherForm.formState.isSubmitting ? 'Creando...' : 'Crear Cuenta'}
-                </Button>
+                <Button type="submit" disabled={newTeacherForm.formState.isSubmitting}>{newTeacherForm.formState.isSubmitting ? 'Creando...' : 'Crear Cuenta'}</Button>
               </DialogFooter>
             </form>
           </Form>
