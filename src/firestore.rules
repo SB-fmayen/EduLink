@@ -54,8 +54,9 @@ service cloud.firestore {
     }
 
     match /grades/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isManager();
+      // CORRECCION: Cualquier staff puede leer y escribir. Solo admins pueden eliminar.
+      allow read, write: if isStaff();
+      allow delete: if isManager();
     }
     
     match /sections/{docId} {
@@ -80,10 +81,8 @@ service cloud.firestore {
     }
 
     // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
-    // Permite a un estudiante ver sus propias inscripciones en todos los cursos
-    // y al personal (staff) ver cualquier inscripción.
+    // Permite a un estudiante ver sus propias inscripciones y al personal/profesor ver las de sus cursos.
     match /{path=**}/students/{studentDocId} {
-        // CORRECCIÓN: El profesor del curso también puede leer la inscripción
         allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) 
                     || (isStaff() && isTeacherOfCourse(resource.data.courseId)) 
                     || isManager();
