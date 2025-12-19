@@ -71,7 +71,7 @@ service cloud.firestore {
       // Subcolección de estudiantes inscritos en un curso.
       match /students/{studentId} {
          // El staff, el profesor del curso, o el propio estudiante pueden ver la inscripción.
-         allow read: if isStaff() || isTeacherOfCourse(courseId) || isOwner(studentId);
+         allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(studentId);
          // El staff puede inscribir, actualizar o desinscribir estudiantes.
          allow write: if isStaff();
          // El staff puede eliminar inscripciones (parte del lote de eliminación de cursos)

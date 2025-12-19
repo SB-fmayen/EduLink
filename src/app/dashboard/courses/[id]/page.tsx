@@ -166,8 +166,8 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
 
     const canViewStudents = React.useMemo(() => {
         if (isCoreDataLoading || !userProfile || !course) return false;
-        // Permite la vista si es admin o si es el profesor asignado a este curso.
-        return userProfile.role === 'admin' || user?.uid === course.teacherId;
+        // Permite la vista si es admin, director, o el profesor asignado a este curso.
+        return userProfile.role === 'admin' || userProfile.role === 'director' || user?.uid === course.teacherId;
     }, [isCoreDataLoading, userProfile, course, user]);
 
 
