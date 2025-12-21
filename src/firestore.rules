@@ -63,6 +63,13 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isManager(); // Solo admins y directores
     }
+    
+    match /attendance/{recordId} {
+      // El profesor del curso o un manager pueden crear y actualizar registros.
+      allow write: if isManager() || isTeacherOfCourse(request.resource.data.courseId);
+      // El estudiante, sus padres (futuro), el profesor o managers pueden leerlo.
+      allow read: if isManager() || isTeacherOfCourse(request.resource.data.courseId) || isOwner(request.resource.data.studentId);
+    }
 
     match /courses/{courseId} {
       // CORRECCIÓN: Solo el personal puede leer los detalles de todos los cursos.

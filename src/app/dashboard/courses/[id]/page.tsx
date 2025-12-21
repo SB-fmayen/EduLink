@@ -16,21 +16,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, setDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, FileText, Megaphone, ShieldAlert, Users } from 'lucide-react';
+import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck } from 'lucide-react';
 import { Role } from '@/lib/roles';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { toast } from '@/hooks/use-toast';
 
 
 interface Course {
@@ -58,6 +54,11 @@ interface UserProfile {
   role: Role;
 }
 
+interface AttendanceRecord {
+    id: string;
+    status: 'presente' | 'ausente' | 'tardanza';
+}
+
 function PlaceholderTab({ title }: { title: string }) {
     return (
         <Card>
@@ -69,6 +70,174 @@ function PlaceholderTab({ title }: { title: string }) {
             </CardContent>
         </Card>
     )
+}
+
+function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermission: boolean }) {
+    const firestore = useFirestore();
+    const [date, setDate] = React.useState<Date | undefined>(new Date());
+    const formattedDate = date ? format(date, 'yyyy-MM-dd') : '';
+
+    // 1. Get enrolled students for the course
+    const enrolledStudentsRef = useMemoFirebase(() => {
+        if (hasPermission && courseId) {
+            return collection(firestore, `courses/${courseId}/students`);
+        }
+        return null;
+    }, [hasPermission, firestore, courseId]);
+    const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<EnrolledStudent>(enrolledStudentsRef);
+    
+    const studentIds = React.useMemo(() => enrolledStudents?.map(s => s.studentId) || [], [enrolledStudents]);
+
+    // 2. Get profiles of enrolled students
+    const studentProfilesQuery = useMemoFirebase(() => {
+        if (studentIds.length > 0) {
+            return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds.slice(0, 30)));
+        }
+        return null;
+    }, [firestore, studentIds]);
+    const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
+
+    // 3. Get attendance records for the selected date
+    const attendanceQuery = useMemoFirebase(() => {
+        if (courseId && formattedDate && studentIds.length > 0) {
+            const attendanceIds = studentIds.map(studentId => `${courseId}_${studentId}_${formattedDate}`);
+            return query(collection(firestore, 'attendance'), where(documentId(), 'in', attendanceIds));
+        }
+        return null;
+    }, [firestore, courseId, formattedDate, studentIds]);
+    const { data: attendanceData, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
+
+    const attendanceMap = React.useMemo(() => {
+        if (!attendanceData) return new Map();
+        return attendanceData.reduce((acc, record) => {
+            const studentId = record.id.split('_')[1];
+            acc.set(studentId, record.status);
+            return acc;
+        }, new Map<string, string>());
+    }, [attendanceData]);
+
+    const handleSetAttendance = async (studentId: string, status: 'presente' | 'ausente' | 'tardanza') => {
+        if (!courseId || !date || !hasPermission) return;
+        
+        const recordId = `${courseId}_${studentId}_${formattedDate}`;
+        const attendanceRef = doc(firestore, 'attendance', recordId);
+
+        try {
+            await setDoc(attendanceRef, {
+                courseId: courseId,
+                studentId: studentId,
+                date: formattedDate,
+                status: status,
+            });
+            toast({
+                title: 'Asistencia Actualizada',
+                description: `Se ha guardado la asistencia.`,
+            })
+        } catch (error) {
+            console.error("Error updating attendance:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Error al guardar',
+                description: 'No se pudo actualizar la asistencia. Verifica tus permisos.',
+            })
+        }
+    };
+
+    if (!hasPermission) {
+        return (
+            <div className="flex flex-col items-center justify-center h-48 text-center bg-secondary/50 rounded-md">
+                <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
+                <h3 className="font-semibold">Acceso Restringido</h3>
+                <p className="text-sm text-muted-foreground">No tienes permisos para gestionar la asistencia.</p>
+            </div>
+        );
+    }
+    
+    const isLoading = isLoadingEnrolled || isLoadingProfiles || isLoadingAttendance;
+
+    return (
+        <div className="grid md:grid-cols-3 gap-6">
+            <div className="md:col-span-1">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Seleccionar Fecha</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex justify-center">
+                        <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={setDate}
+                            locale={es}
+                            className="rounded-md border"
+                        />
+                    </CardContent>
+                </Card>
+            </div>
+            <div className="md:col-span-2">
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Lista de Estudiantes</CardTitle>
+                        <CardDescription>
+                            Registra la asistencia para el día: {date ? format(date, 'PPP', { locale: es }) : 'Selecciona una fecha'}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                             <TableHeader>
+                                <TableRow>
+                                    <TableHead>Estudiante</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {isLoading ? (
+                                    Array.from({ length: 3 }).map((_, i) => (
+                                        <TableRow key={i}>
+                                            <TableCell><Skeleton className="h-6 w-1/2" /></TableCell>
+                                            <TableCell className="text-right"><Skeleton className="h-8 w-3/4 ml-auto" /></TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : students && students.length > 0 ? (
+                                    students.map(student => {
+                                        const currentStatus = attendanceMap.get(student.id);
+                                        return (
+                                            <TableRow key={student.id}>
+                                                <TableCell className="font-medium">{student.firstName} {student.lastName}</TableCell>
+                                                <TableCell className="text-right space-x-1">
+                                                     <Button 
+                                                        variant={currentStatus === 'presente' ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        onClick={() => handleSetAttendance(student.id, 'presente')}>
+                                                        Presente
+                                                     </Button>
+                                                      <Button 
+                                                        variant={currentStatus === 'ausente' ? 'destructive' : 'outline'}
+                                                        size="sm"
+                                                        onClick={() => handleSetAttendance(student.id, 'ausente')}>
+                                                        Ausente
+                                                     </Button>
+                                                     <Button 
+                                                        variant={currentStatus === 'tardanza' ? 'secondary' : 'outline'}
+                                                        size="sm"
+                                                        onClick={() => handleSetAttendance(student.id, 'tardanza')}>
+                                                        Tardanza
+                                                     </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={2} className="h-24 text-center">No hay estudiantes en este curso.</TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    );
 }
 
 function StudentListTab({ courseId, hasPermission }: { courseId: string, hasPermission: boolean }) {
@@ -164,7 +333,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
 
     const isCoreDataLoading = isAuthLoading || isProfileLoading || isCourseLoading;
 
-    const canViewStudents = React.useMemo(() => {
+    const canManageCourse = React.useMemo(() => {
         if (isCoreDataLoading || !userProfile || !course) return false;
         // Permite la vista si es admin, director, o el profesor asignado a este curso.
         return userProfile.role === 'admin' || userProfile.role === 'director' || user?.uid === course.teacherId;
@@ -192,10 +361,14 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         <div className="flex flex-col gap-6">
             <h1 className="text-3xl font-bold tracking-tight">{courseTitle}</h1>
             <Tabs defaultValue="students" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-6">
                     <TabsTrigger value="students">
                         <Users className="mr-2 h-4 w-4" />
                         Estudiantes
+                    </TabsTrigger>
+                     <TabsTrigger value="attendance">
+                        <CalendarCheck className="mr-2 h-4 w-4" />
+                        Asistencia
                     </TabsTrigger>
                     <TabsTrigger value="grades">
                         <ClipboardList className="mr-2 h-4 w-4" />
@@ -209,7 +382,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                         <Megaphone className="mr-2 h-4 w-4" />
                         Anuncios
                     </TabsTrigger>
-                    <TabsTrigger value="materials">
+                     <TabsTrigger value="materials">
                         <FileText className="mr-2 h-4 w-4" />
                         Material
                     </TabsTrigger>
@@ -221,9 +394,12 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                             <CardDescription>Lista de estudiantes que participan en este curso.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                           <StudentListTab courseId={course.id} hasPermission={canViewStudents} />
+                           <StudentListTab courseId={course.id} hasPermission={canManageCourse} />
                         </CardContent>
                     </Card>
+                </TabsContent>
+                <TabsContent value="attendance">
+                    <AttendanceTab courseId={course.id} hasPermission={canManageCourse} />
                 </TabsContent>
                 <TabsContent value="grades">
                      <PlaceholderTab title="Registro de Calificaciones" />
