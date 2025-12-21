@@ -42,8 +42,8 @@ service cloud.firestore {
     }
 
     function isTeacherOfCourse(courseId) {
-      let courseDoc = getCourse(courseId);
       // Asegúrate de que courseDoc y courseDoc.data no sean nulos
+      let courseDoc = getCourse(courseId);
       return isSignedIn() && courseDoc != null && courseDoc.data != null && courseDoc.data.teacherId == request.auth.uid;
     }
 
@@ -105,8 +105,8 @@ service cloud.firestore {
       match /assignedCourses/{courseId} {
         // CORRECCIÓN: El personal puede leer las asignaciones de cualquier profesor.
         allow read: if isStaff();
-        // Solo un manager puede asignar o desasignar cursos a un profesor.
-        allow create, delete: if isManager();
+        // Solo un manager puede asignar, actualizar o desasignar cursos a un profesor.
+        allow write: if isManager();
       }
     }
   }
