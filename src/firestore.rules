@@ -47,6 +47,11 @@ service cloud.firestore {
       return isSignedIn() && courseDoc != null && courseDoc.data != null && courseDoc.data.teacherId == request.auth.uid;
     }
 
+    function getCourseIdFromAttendanceRecord() {
+      // Extrae el courseId del ID del documento de asistencia (ej: 'courseId_studentId_date')
+      return resource.id.split('_')[0];
+    }
+    
     // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
     match /subjects/{docId} {
       allow read: if isSignedIn();
@@ -67,8 +72,10 @@ service cloud.firestore {
     match /attendance/{recordId} {
       // El profesor del curso o un manager pueden crear y actualizar registros.
       allow write: if isManager() || isTeacherOfCourse(request.resource.data.courseId);
-      // El estudiante, sus padres (futuro), el profesor o managers pueden leerlo.
-      allow read: if isManager() || isTeacherOfCourse(request.resource.data.courseId) || isOwner(request.resource.data.studentId);
+      // El estudiante puede leer su propio registro individual (get)
+      allow get: if isManager() || isTeacherOfCourse(resource.data.courseId) || isOwner(resource.data.studentId);
+      // El profesor o un manager pueden listar los registros de un curso (list)
+      allow list: if isManager() || isTeacherOfCourse(getCourseIdFromAttendanceRecord());
     }
 
     match /courses/{courseId} {
