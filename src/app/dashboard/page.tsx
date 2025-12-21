@@ -76,7 +76,7 @@ function CourseCard({ courseId }: CourseCardProps) {
 
   if (!course) return null;
 
-  const fullSectionName = [course.sectionName, course.gradeName].filter(Boolean).join(' - ');
+  const fullSectionName = [course.gradeName, course.sectionName].filter(Boolean).join(', ');
 
 
   return (
