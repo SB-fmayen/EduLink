@@ -118,3 +118,6 @@ service cloud.firestore {
     }
   }
 }
+
+
+// CORRECCIÓN: El personal puede leer las asignaciones de cualquier profesor.
