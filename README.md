@@ -75,4 +75,14 @@ Este índice utiliza un "grupo de colecciones" para permitir que un estudiante e
     1. `studentId` - **Ascendente**
 - **Ámbito de la consulta**: Grupo de colecciones
 
+### Índice 3: Para Consultar Registros de Asistencia por Curso y Fecha
+
+Este índice es crucial para el módulo de asistencia, permitiendo a los profesores buscar rápidamente los registros de un curso específico en una fecha determinada.
+
+- **ID de colección**: `attendance`
+- **Campos a indexar**:
+    1. `courseId` - **Ascendente**
+    2. `date` - **Ascendente**
+- **Ámbito de la consulta**: Colección
+
 Una vez que crees estos índices, Firestore tardará unos minutos en construirlos. Después de eso, las consultas que antes fallaban deberían funcionar correctamente.
