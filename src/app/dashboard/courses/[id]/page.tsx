@@ -56,6 +56,7 @@ interface UserProfile {
 
 interface AttendanceRecord {
     id: string;
+    studentId: string;
     status: 'presente' | 'ausente' | 'tardanza';
 }
 
@@ -99,19 +100,22 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
 
     // 3. Get attendance records for the selected date
     const attendanceQuery = useMemoFirebase(() => {
-        if (courseId && formattedDate && studentIds.length > 0) {
-            const attendanceIds = studentIds.map(studentId => `${courseId}_${studentId}_${formattedDate}`);
-            return query(collection(firestore, 'attendance'), where(documentId(), 'in', attendanceIds));
+        if (courseId && formattedDate) {
+            return query(
+                collection(firestore, 'attendance'), 
+                where('courseId', '==', courseId),
+                where('date', '==', formattedDate)
+            );
         }
         return null;
-    }, [firestore, courseId, formattedDate, studentIds]);
+    }, [firestore, courseId, formattedDate]);
     const { data: attendanceData, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
+
 
     const attendanceMap = React.useMemo(() => {
         if (!attendanceData) return new Map();
         return attendanceData.reduce((acc, record) => {
-            const studentId = record.id.split('_')[1];
-            acc.set(studentId, record.status);
+            acc.set(record.studentId, record.status);
             return acc;
         }, new Map<string, string>());
     }, [attendanceData]);
@@ -128,7 +132,7 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
                 studentId: studentId,
                 date: formattedDate,
                 status: status,
-            });
+            }, { merge: true }); // Usar merge para no sobreescribir otros campos si los hubiera
             toast({
                 title: 'Asistencia Actualizada',
                 description: `Se ha guardado la asistencia.`,
