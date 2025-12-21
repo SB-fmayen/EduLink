@@ -43,7 +43,10 @@ service cloud.firestore {
 
     function isTeacherOfCourse(courseId) {
       let courseDoc = getCourse(courseId);
-      return courseDoc.data.teacherId == request.auth.uid;
+      return isSignedIn()
+        && courseDoc != null
+        && courseDoc.data != null
+        && courseDoc.data.teacherId == request.auth.uid;
     }
 
     // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
@@ -53,7 +56,6 @@ service cloud.firestore {
     }
 
     match /grades/{docId} {
-      // CORRECCION: Cualquier staff puede leer y escribir. Solo admins pueden eliminar.
       allow read, write: if isStaff();
       allow delete: if isManager();
     }
@@ -64,24 +66,30 @@ service cloud.firestore {
     }
 
     match /courses/{courseId} {
-      // CORRECCIÓN: Solo el personal puede leer los detalles de todos los cursos.
       allow read: if isStaff();
-      allow write: if isManager(); // Solo admins y directores
+      allow write: if isManager();
 
-      // Subcolección de estudiantes inscritos en un curso.
       match /students/{studentId} {
-         // El staff o el propio estudiante pueden ver la inscripción.
-         allow read: if isStaff() || isOwner(studentId);
-         // El staff puede inscribir, actualizar o desinscribir estudiantes.
-         allow write: if isStaff();
+        allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(studentId);
+        allow write: if isStaff();
+        allow delete: if isStaff();
+      }
+
+      // Asistencia como subcolección del curso
+      match /attendance/{recordId} {
+        // Crear/actualizar
+        allow write: if isManager() || isTeacherOfCourse(courseId);
+        // Leer documento puntual
+        allow get: if isManager()
+                 || isTeacherOfCourse(courseId)
+                 || (isSignedIn() && resource.data.studentId == request.auth.uid);
+        // Listar todos los registros del curso
+        allow list: if isManager() || isTeacherOfCourse(courseId);
       }
     }
 
     // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
-    // Permite a un estudiante ver sus propias inscripciones en todos los cursos
-    // y al personal (staff) ver cualquier inscripción.
     match /{path=**}/students/{studentDocId} {
-        // CORRECCIÓN: El profesor del curso también puede leer la inscripción
         allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) 
                     || (isStaff() && isTeacherOfCourse(resource.data.courseId)) 
                     || isManager();
@@ -104,8 +112,8 @@ service cloud.firestore {
       match /assignedCourses/{courseId} {
         // CORRECCIÓN: El personal puede leer las asignaciones de cualquier profesor.
         allow read: if isStaff();
-        // Solo un manager puede asignar o desasignar cursos a un profesor.
-        allow create, delete: if isManager();
+        // Solo un manager puede asignar, actualizar o desasignar cursos a un profesor.
+        allow write: if isManager();
       }
     }
   }

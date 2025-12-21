@@ -58,6 +58,7 @@ interface AttendanceRecord {
     id: string;
     studentId: string;
     status: 'presente' | 'ausente' | 'tardanza';
+    date: string;
 }
 
 function PlaceholderTab({ title }: { title: string }) {
@@ -98,12 +99,11 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     }, [firestore, studentIds]);
     const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
 
-    // 3. Get attendance records for the selected date
+    // 3. Get attendance records for the selected date from the subcollection
     const attendanceQuery = useMemoFirebase(() => {
         if (courseId && formattedDate) {
             return query(
-                collection(firestore, 'attendance'), 
-                where('courseId', '==', courseId),
+                collection(firestore, `courses/${courseId}/attendance`), 
                 where('date', '==', formattedDate)
             );
         }
@@ -123,16 +123,17 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     const handleSetAttendance = async (studentId: string, status: 'presente' | 'ausente' | 'tardanza') => {
         if (!courseId || !date || !hasPermission) return;
         
-        const recordId = `${courseId}_${studentId}_${formattedDate}`;
-        const attendanceRef = doc(firestore, 'attendance', recordId);
+        // El ID del documento es único para el estudiante y la fecha dentro de la subcolección del curso
+        const recordId = `${studentId}_${formattedDate}`;
+        const attendanceRef = doc(firestore, `courses/${courseId}/attendance`, recordId);
 
         try {
+            // El courseId ya no es necesario en el cuerpo del documento
             await setDoc(attendanceRef, {
-                courseId: courseId,
                 studentId: studentId,
                 date: formattedDate,
                 status: status,
-            }, { merge: true }); // Usar merge para no sobreescribir otros campos si los hubiera
+            }, { merge: true });
             toast({
                 title: 'Asistencia Actualizada',
                 description: `Se ha guardado la asistencia.`,
