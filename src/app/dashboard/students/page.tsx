@@ -258,7 +258,11 @@ const handleAssignToSection = async () => {
             // 3. Inscribirlo en los cursos de la nueva sección
             for (const course of coursesInSection) {
                 const enrollmentRef = doc(firestore, `courses/${course.id}/students`, selectedStudent.id);
-                batch.set(enrollmentRef, { studentId: selectedStudent.id, sectionId: course.sectionId });
+                batch.set(enrollmentRef, { 
+                    studentId: selectedStudent.id, 
+                    sectionId: course.sectionId,
+                    studentName: `${selectedStudent.firstName} ${selectedStudent.lastName}`
+                });
             }
             
             await batch.commit();
@@ -433,7 +437,7 @@ const handleAssignToSection = async () => {
                   <div className="relative">
                     <FormControl><Input type={showPassword ? 'text' : 'password'} {...field} /></FormControl>
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3">
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4 />}
                     </button>
                   </div>
                   <FormMessage />
