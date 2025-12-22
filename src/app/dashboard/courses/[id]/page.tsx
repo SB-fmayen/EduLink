@@ -57,6 +57,7 @@ interface UserProfile {
 interface AttendanceRecord {
     id: string;
     studentId: string;
+    studentName: string; // Campo para legibilidad
     status: 'presente' | 'ausente' | 'tardanza';
     date: string;
 }
@@ -121,16 +122,25 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     }, [attendanceData]);
 
     const handleSetAttendance = async (studentId: string, status: 'presente' | 'ausente' | 'tardanza') => {
-        if (!courseId || !date || !hasPermission) return;
+        if (!courseId || !date || !hasPermission || !students) return;
+
+        const student = students.find(s => s.id === studentId);
+        if (!student) {
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'No se encontró el estudiante para guardar la asistencia.',
+            });
+            return;
+        }
         
-        // El ID del documento es único para el estudiante y la fecha dentro de la subcolección del curso
         const recordId = `${studentId}_${formattedDate}`;
         const attendanceRef = doc(firestore, `courses/${courseId}/attendance`, recordId);
 
         try {
-            // El courseId ya no es necesario en el cuerpo del documento
             await setDoc(attendanceRef, {
-                studentId: studentId,
+                studentId: student.id,
+                studentName: `${student.firstName} ${student.lastName}`, // <-- Dato legible
                 date: formattedDate,
                 status: status,
             }, { merge: true });
