@@ -747,3 +747,5 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         </div>
     );
 }
+
+    
