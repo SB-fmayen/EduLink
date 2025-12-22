@@ -18,10 +18,10 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, setDoc, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck, PlusCircle } from 'lucide-react';
+import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck, PlusCircle, MoreHorizontal } from 'lucide-react';
 import { Role } from '@/lib/roles';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
@@ -35,6 +35,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -44,6 +50,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { CalendarIcon } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 interface Course {
@@ -83,6 +91,7 @@ interface Task {
     id: string;
     title: string;
     description: string;
+    isGroupTask: boolean;
     dueDate: {
         toDate: () => Date;
     };
@@ -286,18 +295,21 @@ const taskFormSchema = z.object({
   title: z.string().min(3, { message: 'El título debe tener al menos 3 caracteres.' }),
   description: z.string().min(10, { message: 'La descripción debe tener al menos 10 caracteres.' }),
   dueDate: z.date({ required_error: 'La fecha de entrega es obligatoria.' }),
+  dueTime: z.string({ required_error: 'La hora de entrega es obligatoria.' }),
+  isGroupTask: z.boolean().default(false),
 });
 
 function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission: boolean }) {
     const firestore = useFirestore();
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-    
+    const [editingTask, setEditingTask] = React.useState<Task | null>(null);
+
     const tasksRef = useMemoFirebase(() => {
-        if (courseId && hasPermission) {
+        if (courseId) { // Permitir lectura a todos, las reglas de seguridad controlan la escritura
             return collection(firestore, `courses/${courseId}/tasks`);
         }
         return null;
-    }, [firestore, courseId, hasPermission]);
+    }, [firestore, courseId]);
     const { data: tasks, isLoading } = useCollection<Task>(tasksRef);
 
     const form = useForm<z.infer<typeof taskFormSchema>>({
@@ -305,42 +317,87 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
         defaultValues: {
             title: '',
             description: '',
+            isGroupTask: false,
         },
     });
 
+    React.useEffect(() => {
+        if (editingTask) {
+            form.reset({
+                title: editingTask.title,
+                description: editingTask.description,
+                dueDate: editingTask.dueDate.toDate(),
+                dueTime: format(editingTask.dueDate.toDate(), 'HH:mm'),
+                isGroupTask: editingTask.isGroupTask || false,
+            });
+        } else {
+            form.reset({
+                title: '',
+                description: '',
+                dueDate: undefined,
+                dueTime: '23:59',
+                isGroupTask: false
+            });
+        }
+    }, [editingTask, form]);
+
+
+    const handleCreateClick = () => {
+        setEditingTask(null);
+        setIsDialogOpen(true);
+    };
+
+    const handleEditClick = (task: Task) => {
+        setEditingTask(task);
+        setIsDialogOpen(true);
+    };
+
     const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
         if (!tasksRef) return;
+
+        const [hours, minutes] = values.dueTime.split(':').map(Number);
+        const finalDueDate = new Date(values.dueDate);
+        finalDueDate.setHours(hours, minutes);
+
+        const payload = {
+            ...values,
+            dueDate: finalDueDate,
+        };
+        delete (payload as any).dueTime; // No guardar dueTime en Firestore
+        
         try {
-            await addDoc(tasksRef, {
-                ...values,
-                createdAt: serverTimestamp(),
-            });
-            toast({
-                title: 'Tarea Creada',
-                description: 'La nueva tarea ha sido creada exitosamente.',
-            });
+             if (editingTask) {
+                const taskDocRef = doc(firestore, `courses/${courseId}/tasks`, editingTask.id);
+                await updateDoc(taskDocRef, payload);
+                 toast({
+                    title: 'Tarea Actualizada',
+                    description: 'La tarea ha sido actualizada exitosamente.',
+                });
+            } else {
+                await addDoc(tasksRef, {
+                    ...payload,
+                    createdAt: serverTimestamp(),
+                });
+                toast({
+                    title: 'Tarea Creada',
+                    description: 'La nueva tarea ha sido creada exitosamente.',
+                });
+            }
             setIsDialogOpen(false);
-            form.reset();
         } catch (error) {
-            console.error('Error creating task:', error);
+            console.error('Error saving task:', error);
             toast({
                 variant: 'destructive',
                 title: 'Error',
-                description: 'No se pudo crear la tarea.',
+                description: 'No se pudo guardar la tarea. Revisa tus permisos.',
             });
         }
     };
 
-    if (!hasPermission) {
-        return (
-            <div className="flex flex-col items-center justify-center h-48 text-center bg-secondary/50 rounded-md">
-                <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
-                <h3 className="font-semibold">Acceso Restringido</h3>
-                <p className="text-sm text-muted-foreground">No tienes permisos para gestionar las tareas.</p>
-            </div>
-        );
+    if (!hasPermission && (isLoading || (tasks && tasks.length > 0))) {
+        // Show restricted access only if teacher, otherwise show student view (later)
     }
-    
+
     return (
         <>
             <Card>
@@ -350,7 +407,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                         <CardDescription>Crea y administra las tareas para este curso.</CardDescription>
                     </div>
                     {hasPermission && (
-                        <Button onClick={() => setIsDialogOpen(true)}>
+                        <Button onClick={handleCreateClick}>
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Crear Tarea
                         </Button>
@@ -361,25 +418,39 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Título</TableHead>
-                                <TableHead>Fecha de Creación</TableHead>
+                                <TableHead>Tipo</TableHead>
                                 <TableHead>Fecha de Entrega</TableHead>
                                 <TableHead>Entregas</TableHead>
+                                {hasPermission && <TableHead><span className="sr-only">Acciones</span></TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
-                                <TableRow><TableCell colSpan={4} className="text-center h-24">Cargando tareas...</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={hasPermission ? 5 : 4} className="text-center h-24">Cargando tareas...</TableCell></TableRow>
                             ) : tasks && tasks.length > 0 ? (
                                 tasks.map((task) => (
                                     <TableRow key={task.id}>
                                         <TableCell className="font-medium">{task.title}</TableCell>
-                                        <TableCell>{task.createdAt ? format(task.createdAt.toDate(), 'PPP', { locale: es }) : 'Pendiente...'}</TableCell>
+                                        <TableCell>{task.isGroupTask ? 'Grupal' : 'Individual'}</TableCell>
                                         <TableCell>{task.dueDate ? format(task.dueDate.toDate(), 'PPP p', { locale: es }) : 'Pendiente...'}</TableCell>
                                         <TableCell>0/30</TableCell>
+                                         {hasPermission && (
+                                            <TableCell className="text-right">
+                                                 <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>
+                                                        <DropdownMenuItem>Eliminar</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))
                             ) : (
-                                <TableRow><TableCell colSpan={4} className="text-center h-24">No hay tareas creadas para este curso.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={hasPermission ? 5 : 4} className="text-center h-24">No hay tareas creadas para este curso.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
@@ -389,8 +460,8 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Crear Nueva Tarea</DialogTitle>
-                        <DialogDescription>Completa los detalles para la nueva tarea.</DialogDescription>
+                        <DialogTitle>{editingTask ? 'Editar Tarea' : 'Crear Nueva Tarea'}</DialogTitle>
+                        <DialogDescription>Completa los detalles para la tarea.</DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
@@ -420,50 +491,77 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                                     </FormItem>
                                 )}
                             />
-                             <FormField
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField
+                                    control={form.control}
+                                    name="dueDate"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-col">
+                                            <FormLabel>Fecha Límite</FormLabel>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <FormControl>
+                                                        <Button
+                                                            variant={"outline"}
+                                                            className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                                                        >
+                                                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Selecciona una fecha</span>}
+                                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                        </Button>
+                                                    </FormControl>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar
+                                                        mode="single"
+                                                        selected={field.value}
+                                                        onSelect={field.onChange}
+                                                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                                                        initialFocus
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="dueTime"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Hora Límite</FormLabel>
+                                            <FormControl>
+                                                <Input type="time" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                            <FormField
                                 control={form.control}
-                                name="dueDate"
+                                name="isGroupTask"
                                 render={({ field }) => (
-                                    <FormItem className="flex flex-col">
-                                    <FormLabel>Fecha y Hora Límite de Entrega</FormLabel>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
+                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                                         <FormControl>
-                                            <Button
-                                            variant={"outline"}
-                                            className={cn(
-                                                "w-full pl-3 text-left font-normal",
-                                                !field.value && "text-muted-foreground"
-                                            )}
-                                            >
-                                            {field.value ? (
-                                                format(field.value, "PPP", { locale: es })
-                                            ) : (
-                                                <span>Selecciona una fecha</span>
-                                            )}
-                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                            </Button>
+                                            <Checkbox
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
                                         </FormControl>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar
-                                            mode="single"
-                                            selected={field.value}
-                                            onSelect={field.onChange}
-                                            disabled={(date) =>
-                                                date < new Date()
-                                            }
-                                            initialFocus
-                                        />
-                                        </PopoverContent>
-                                    </Popover>
-                                    <FormMessage />
+                                        <div className="space-y-1 leading-none">
+                                            <FormLabel>Tarea Grupal</FormLabel>
+                                            <FormDescription>
+                                                Si se marca, la calificación se aplicará a todo el grupo.
+                                            </FormDescription>
+                                        </div>
                                     </FormItem>
                                 )}
-                                />
+                            />
+
                             <DialogFooter>
                                 <Button type="submit" disabled={form.formState.isSubmitting}>
-                                    {form.formState.isSubmitting ? 'Creando...' : 'Crear Tarea'}
+                                    {form.formState.isSubmitting ? 'Guardando...' : (editingTask ? 'Guardar Cambios' : 'Crear Tarea')}
                                 </Button>
                             </DialogFooter>
                         </form>
@@ -649,3 +747,5 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
         </div>
     );
 }
+
+    
