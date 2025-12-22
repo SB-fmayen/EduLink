@@ -349,10 +349,12 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                         <CardTitle>Gestión de Tareas</CardTitle>
                         <CardDescription>Crea y administra las tareas para este curso.</CardDescription>
                     </div>
-                    <Button onClick={() => setIsDialogOpen(true)}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Crear Tarea
-                    </Button>
+                    {hasPermission && (
+                        <Button onClick={() => setIsDialogOpen(true)}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Crear Tarea
+                        </Button>
+                    )}
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -371,8 +373,8 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                                 tasks.map((task) => (
                                     <TableRow key={task.id}>
                                         <TableCell className="font-medium">{task.title}</TableCell>
-                                        <TableCell>{format(task.createdAt.toDate(), 'PPP', { locale: es })}</TableCell>
-                                        <TableCell>{format(task.dueDate.toDate(), 'PPP p', { locale: es })}</TableCell>
+                                        <TableCell>{task.createdAt ? format(task.createdAt.toDate(), 'PPP', { locale: es }) : 'Pendiente...'}</TableCell>
+                                        <TableCell>{task.dueDate ? format(task.dueDate.toDate(), 'PPP p', { locale: es }) : 'Pendiente...'}</TableCell>
                                         <TableCell>0/30</TableCell>
                                     </TableRow>
                                 ))
@@ -590,7 +592,7 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
     return (
         <div className="flex flex-col gap-6">
             <h1 className="text-3xl font-bold tracking-tight">{courseTitle}</h1>
-            <Tabs defaultValue="students" className="w-full">
+            <Tabs defaultValue="assignments" className="w-full">
                 <TabsList className="grid w-full grid-cols-6">
                     <TabsTrigger value="students">
                         <Users className="mr-2 h-4 w-4" />
