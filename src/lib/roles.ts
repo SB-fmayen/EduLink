@@ -18,13 +18,13 @@ export const menuItems: NavItem[] = [
     href: '/dashboard/academics',
     label: 'Académico',
     icon: 'BookOpen',
-    roles: ['admin', 'teacher', 'student'],
+    roles: ['admin', 'student'],
   },
   {
     href: '/dashboard/students',
     label: 'Estudiantes',
     icon: 'Users',
-    roles: ['admin', 'teacher', 'parent'],
+    roles: ['admin', 'parent'],
   },
    {
     href: '/dashboard/users',
@@ -42,7 +42,7 @@ export const menuItems: NavItem[] = [
     href: '/dashboard/grades',
     label: 'Calificaciones',
     icon: 'ClipboardList',
-    roles: ['admin', 'teacher', 'student', 'parent'],
+    roles: ['admin', 'student', 'parent'],
   },
   {
     href: '/dashboard/finances',

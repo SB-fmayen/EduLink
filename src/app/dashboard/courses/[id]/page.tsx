@@ -183,7 +183,7 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
                             selected={date}
                             onSelect={setDate}
                             locale={es}
-                            className="rounded-md border"
+                            className="rounded-md border w-full"
                         />
                     </CardContent>
                 </Card>
