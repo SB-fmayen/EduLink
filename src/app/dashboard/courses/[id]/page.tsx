@@ -18,15 +18,32 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck } from 'lucide-react';
+import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck, PlusCircle } from 'lucide-react';
 import { Role } from '@/lib/roles';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { CalendarIcon } from 'lucide-react';
 
 
 interface Course {
@@ -57,10 +74,23 @@ interface UserProfile {
 interface AttendanceRecord {
     id: string;
     studentId: string;
-    studentName: string; // Campo para legibilidad
+    studentName: string; 
     status: 'presente' | 'ausente' | 'tardanza';
     date: string;
 }
+
+interface Task {
+    id: string;
+    title: string;
+    description: string;
+    dueDate: {
+        toDate: () => Date;
+    };
+    createdAt: {
+        toDate: () => Date;
+    };
+}
+
 
 function PlaceholderTab({ title }: { title: string }) {
     return (
@@ -80,7 +110,6 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     const [date, setDate] = React.useState<Date | undefined>(new Date());
     const formattedDate = date ? format(date, 'yyyy-MM-dd') : '';
 
-    // 1. Get enrolled students for the course
     const enrolledStudentsRef = useMemoFirebase(() => {
         if (hasPermission && courseId) {
             return collection(firestore, `courses/${courseId}/students`);
@@ -91,7 +120,6 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     
     const studentIds = React.useMemo(() => enrolledStudents?.map(s => s.studentId) || [], [enrolledStudents]);
 
-    // 2. Get profiles of enrolled students
     const studentProfilesQuery = useMemoFirebase(() => {
         if (studentIds.length > 0) {
             return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds.slice(0, 30)));
@@ -100,16 +128,15 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     }, [firestore, studentIds]);
     const { data: students, isLoading: isLoadingProfiles } = useCollection<Student>(studentProfilesQuery);
 
-    // 3. Get attendance records for the selected date from the subcollection
     const attendanceQuery = useMemoFirebase(() => {
-        if (courseId && formattedDate) {
+        if (courseId && formattedDate && hasPermission) {
             return query(
                 collection(firestore, `courses/${courseId}/attendance`), 
                 where('date', '==', formattedDate)
             );
         }
         return null;
-    }, [firestore, courseId, formattedDate]);
+    }, [firestore, courseId, formattedDate, hasPermission]);
     const { data: attendanceData, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
 
 
@@ -140,7 +167,7 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
         try {
             await setDoc(attendanceRef, {
                 studentId: student.id,
-                studentName: `${student.firstName} ${student.lastName}`, // <-- Dato legible
+                studentName: `${student.firstName} ${student.lastName}`,
                 date: formattedDate,
                 status: status,
             }, { merge: true });
@@ -255,6 +282,196 @@ function AttendanceTab({ courseId, hasPermission }: { courseId: string; hasPermi
     );
 }
 
+const taskFormSchema = z.object({
+  title: z.string().min(3, { message: 'El título debe tener al menos 3 caracteres.' }),
+  description: z.string().min(10, { message: 'La descripción debe tener al menos 10 caracteres.' }),
+  dueDate: z.date({ required_error: 'La fecha de entrega es obligatoria.' }),
+});
+
+function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission: boolean }) {
+    const firestore = useFirestore();
+    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    
+    const tasksRef = useMemoFirebase(() => {
+        if (courseId && hasPermission) {
+            return collection(firestore, `courses/${courseId}/tasks`);
+        }
+        return null;
+    }, [firestore, courseId, hasPermission]);
+    const { data: tasks, isLoading } = useCollection<Task>(tasksRef);
+
+    const form = useForm<z.infer<typeof taskFormSchema>>({
+        resolver: zodResolver(taskFormSchema),
+        defaultValues: {
+            title: '',
+            description: '',
+        },
+    });
+
+    const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
+        if (!tasksRef) return;
+        try {
+            await addDoc(tasksRef, {
+                ...values,
+                createdAt: serverTimestamp(),
+            });
+            toast({
+                title: 'Tarea Creada',
+                description: 'La nueva tarea ha sido creada exitosamente.',
+            });
+            setIsDialogOpen(false);
+            form.reset();
+        } catch (error) {
+            console.error('Error creating task:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'No se pudo crear la tarea.',
+            });
+        }
+    };
+
+    if (!hasPermission) {
+        return (
+            <div className="flex flex-col items-center justify-center h-48 text-center bg-secondary/50 rounded-md">
+                <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
+                <h3 className="font-semibold">Acceso Restringido</h3>
+                <p className="text-sm text-muted-foreground">No tienes permisos para gestionar las tareas.</p>
+            </div>
+        );
+    }
+    
+    return (
+        <>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle>Gestión de Tareas</CardTitle>
+                        <CardDescription>Crea y administra las tareas para este curso.</CardDescription>
+                    </div>
+                    <Button onClick={() => setIsDialogOpen(true)}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Crear Tarea
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Título</TableHead>
+                                <TableHead>Fecha de Creación</TableHead>
+                                <TableHead>Fecha de Entrega</TableHead>
+                                <TableHead>Entregas</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading ? (
+                                <TableRow><TableCell colSpan={4} className="text-center h-24">Cargando tareas...</TableCell></TableRow>
+                            ) : tasks && tasks.length > 0 ? (
+                                tasks.map((task) => (
+                                    <TableRow key={task.id}>
+                                        <TableCell className="font-medium">{task.title}</TableCell>
+                                        <TableCell>{format(task.createdAt.toDate(), 'PPP', { locale: es })}</TableCell>
+                                        <TableCell>{format(task.dueDate.toDate(), 'PPP p', { locale: es })}</TableCell>
+                                        <TableCell>0/30</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow><TableCell colSpan={4} className="text-center h-24">No hay tareas creadas para este curso.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Crear Nueva Tarea</DialogTitle>
+                        <DialogDescription>Completa los detalles para la nueva tarea.</DialogDescription>
+                    </DialogHeader>
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+                            <FormField
+                                control={form.control}
+                                name="title"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Título de la Tarea</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="Ej: Ensayo sobre la Revolución Industrial" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="description"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Descripción</FormLabel>
+                                        <FormControl>
+                                            <Textarea placeholder="Describe las instrucciones, los requisitos y los criterios de evaluación de la tarea." {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                             <FormField
+                                control={form.control}
+                                name="dueDate"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col">
+                                    <FormLabel>Fecha y Hora Límite de Entrega</FormLabel>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                        <FormControl>
+                                            <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                                "w-full pl-3 text-left font-normal",
+                                                !field.value && "text-muted-foreground"
+                                            )}
+                                            >
+                                            {field.value ? (
+                                                format(field.value, "PPP", { locale: es })
+                                            ) : (
+                                                <span>Selecciona una fecha</span>
+                                            )}
+                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                            </Button>
+                                        </FormControl>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                            mode="single"
+                                            selected={field.value}
+                                            onSelect={field.onChange}
+                                            disabled={(date) =>
+                                                date < new Date()
+                                            }
+                                            initialFocus
+                                        />
+                                        </PopoverContent>
+                                    </Popover>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                            <DialogFooter>
+                                <Button type="submit" disabled={form.formState.isSubmitting}>
+                                    {form.formState.isSubmitting ? 'Creando...' : 'Crear Tarea'}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </Form>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
 function StudentListTab({ courseId, hasPermission }: { courseId: string, hasPermission: boolean }) {
     const firestore = useFirestore();
 
@@ -268,14 +485,13 @@ function StudentListTab({ courseId, hasPermission }: { courseId: string, hasPerm
 
     const studentIds = React.useMemo(() => {
         if (!enrolledStudents) return null;
-        if (enrolledStudents.length === 0) return []; // Return empty array to avoid query errors
+        if (enrolledStudents.length === 0) return [];
         return enrolledStudents.map(s => s.studentId);
     }, [enrolledStudents]);
 
     const studentProfilesQuery = useMemoFirebase(() => {
-        if (studentIds === null) return null; // Still waiting for enrolled students
-        if (studentIds.length === 0) return null; // No students to query
-        // Firestore 'in' queries are limited to 30 items. For larger classes, pagination would be needed.
+        if (studentIds === null) return null;
+        if (studentIds.length === 0) return null;
         return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds.slice(0, 30)));
     }, [firestore, studentIds]);
 
@@ -350,7 +566,6 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
 
     const canManageCourse = React.useMemo(() => {
         if (isCoreDataLoading || !userProfile || !course) return false;
-        // Permite la vista si es admin, director, o el profesor asignado a este curso.
         return userProfile.role === 'admin' || userProfile.role === 'director' || user?.uid === course.teacherId;
     }, [isCoreDataLoading, userProfile, course, user]);
 
@@ -385,13 +600,13 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                         <CalendarCheck className="mr-2 h-4 w-4" />
                         Asistencia
                     </TabsTrigger>
-                    <TabsTrigger value="grades">
-                        <ClipboardList className="mr-2 h-4 w-4" />
-                        Calificaciones
-                    </TabsTrigger>
                     <TabsTrigger value="assignments">
                         <FileText className="mr-2 h-4 w-4" />
                         Tareas
+                    </TabsTrigger>
+                    <TabsTrigger value="grades">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Calificaciones
                     </TabsTrigger>
                     <TabsTrigger value="announcements">
                         <Megaphone className="mr-2 h-4 w-4" />
@@ -416,11 +631,11 @@ export default function CourseDetailsPage({ params }: { params: { id: string } }
                 <TabsContent value="attendance">
                     <AttendanceTab courseId={course.id} hasPermission={canManageCourse} />
                 </TabsContent>
+                 <TabsContent value="assignments">
+                    <TasksTab courseId={course.id} hasPermission={canManageCourse} />
+                </TabsContent>
                 <TabsContent value="grades">
                      <PlaceholderTab title="Registro de Calificaciones" />
-                </TabsContent>
-                <TabsContent value="assignments">
-                     <PlaceholderTab title="Tareas" />
                 </TabsContent>
                 <TabsContent value="announcements">
                      <PlaceholderTab title="Anuncios" />
