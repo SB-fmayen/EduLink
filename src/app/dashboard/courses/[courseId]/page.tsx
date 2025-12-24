@@ -523,7 +523,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuItem onClick={() => handleViewSubmissions(task.id)}>Ver Entregas</DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>
-                                                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteClick(task); }}>Eliminar</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleDeleteClick(task)}>Eliminar</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
