@@ -8,6 +8,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import {
   Table,
@@ -19,16 +20,27 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, Megaphone, ShieldAlert, Users, CalendarCheck, ArrowLeft, FileText } from 'lucide-react';
+import { ClipboardList, Megaphone, ShieldAlert, Users, CalendarCheck, ArrowLeft, FileText, PlusCircle, MoreHorizontal, CalendarIcon } from 'lucide-react';
 import { Role } from '@/lib/roles';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { cn } from '@/lib/utils';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 
 interface Course {
@@ -63,6 +75,232 @@ interface AttendanceRecord {
     status: 'presente' | 'ausente' | 'tardanza';
     date: string;
 }
+
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: any; // Mantener como 'any' para manejar Timestamps de Firestore
+}
+
+// --- Esquema de validación para el formulario de tareas ---
+const taskFormSchema = z.object({
+  title: z.string().min(3, { message: 'El título debe tener al menos 3 caracteres.' }),
+  description: z.string().optional(),
+  dueDate: z.date({
+    required_error: 'La fecha de entrega es requerida.',
+  }),
+});
+
+
+// --- MÓDULO DE TAREAS RECONSTRUIDO ---
+function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission: boolean }) {
+  const firestore = useFirestore();
+  const tasksRef = useMemoFirebase(() => collection(firestore, `courses/${courseId}/tasks`), [firestore, courseId]);
+  const { data: tasks, isLoading } = useCollection<Task>(tasksRef);
+
+  // Estados para los diálogos
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  
+  // Estados para la tarea que se está gestionando
+  const [editingTask, setEditingTask] = React.useState<Task | null>(null);
+  const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
+
+  const form = useForm<z.infer<typeof taskFormSchema>>({
+    resolver: zodResolver(taskFormSchema),
+    defaultValues: { title: '', description: '' },
+  });
+
+  // Abre el diálogo para crear una nueva tarea
+  const handleCreateClick = () => {
+    setEditingTask(null);
+    form.reset({ title: '', description: '' });
+    setIsDialogOpen(true);
+  };
+
+  // Abre el diálogo para editar una tarea existente
+  const handleEditClick = (task: Task) => {
+    setEditingTask(task);
+    form.reset({
+      title: task.title,
+      description: task.description,
+      // Convierte el Timestamp de Firestore a un objeto Date para el formulario
+      dueDate: task.dueDate?.toDate ? task.dueDate.toDate() : new Date(),
+    });
+    setIsDialogOpen(true);
+  };
+
+  // Prepara la tarea para ser eliminada y abre el diálogo de confirmación
+  const handleDeleteClick = (task: Task) => {
+    setTaskToDelete(task);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Ejecuta la eliminación de la tarea
+  const executeDelete = async () => {
+    if (!taskToDelete) return;
+    try {
+      const taskDocRef = doc(firestore, `courses/${courseId}/tasks`, taskToDelete.id);
+      await deleteDoc(taskDocRef);
+      toast({ title: 'Tarea Eliminada', description: 'La tarea ha sido eliminada correctamente.' });
+    } catch (error) {
+      console.error("Error deleting task: ", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la tarea.' });
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setTaskToDelete(null);
+    }
+  };
+
+  // Maneja el envío del formulario para crear o editar
+  const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
+    if (!hasPermission) return;
+
+    try {
+      if (editingTask) {
+        // Actualizar tarea existente
+        const taskDocRef = doc(firestore, `courses/${courseId}/tasks`, editingTask.id);
+        await updateDoc(taskDocRef, values);
+        toast({ title: 'Tarea Actualizada' });
+      } else {
+        // Crear nueva tarea
+        await addDoc(tasksRef, { ...values, createdAt: serverTimestamp() });
+        toast({ title: 'Tarea Creada' });
+      }
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("Error saving task: ", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la tarea.' });
+    }
+  };
+
+  if (!hasPermission) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Tareas</CardTitle>
+            </CardHeader>
+            <CardContent>
+                 <div className="flex flex-col items-center justify-center h-48 text-center bg-secondary/50 rounded-md">
+                    <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
+                    <h3 className="font-semibold">Acceso Restringido</h3>
+                    <p className="text-sm text-muted-foreground">No tienes permisos para ver las tareas de este curso.</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Tareas del Curso</CardTitle>
+            <CardDescription>Gestiona las asignaciones y fechas de entrega.</CardDescription>
+          </div>
+          <Button onClick={handleCreateClick}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Crear Tarea
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Título</TableHead>
+                <TableHead>Descripción</TableHead>
+                <TableHead>Fecha de Entrega</TableHead>
+                <TableHead><span className="sr-only">Acciones</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={4} className="text-center">Cargando tareas...</TableCell></TableRow>
+              ) : tasks && tasks.length > 0 ? (
+                tasks.map((task) => (
+                  <TableRow key={task.id}>
+                    <TableCell className="font-medium">{task.title}</TableCell>
+                    <TableCell className="text-muted-foreground truncate max-w-xs">{task.description}</TableCell>
+                    <TableCell>{task.dueDate?.toDate ? format(task.dueDate.toDate(), 'PPP', { locale: es }) : 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeleteClick(task)}>Eliminar</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow><TableCell colSpan={4} className="text-center h-24">No hay tareas creadas para este curso.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      
+      {/* Diálogo para Crear/Editar Tarea */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTask ? 'Editar Tarea' : 'Crear Nueva Tarea'}</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+              <FormField control={form.control} name="title" render={({ field }) => (
+                <FormItem><FormLabel>Título</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="description" render={({ field }) => (
+                <FormItem><FormLabel>Descripción</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="dueDate" render={({ field }) => (
+                <FormItem className="flex flex-col"><FormLabel>Fecha de Entrega</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                          {field.value ? format(field.value, "PPP", { locale: es }) : <span>Elige una fecha</span>}
+                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                <Button type="submit">{editingTask ? 'Guardar Cambios' : 'Crear Tarea'}</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Confirmación para Eliminar */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás realmente seguro?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la tarea.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 
 function PlaceholderTab({ title }: { title: string }) {
     return (
@@ -383,7 +621,7 @@ export default function CourseDetailsPage({ params }: { params: { courseId: stri
         <div className="flex flex-col gap-6">
             <h1 className="text-3xl font-bold tracking-tight">{courseTitle}</h1>
             <Tabs defaultValue="students" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-6">
                     <TabsTrigger value="students">
                         <Users className="mr-2 h-4 w-4" />
                         Estudiantes
@@ -391,6 +629,10 @@ export default function CourseDetailsPage({ params }: { params: { courseId: stri
                      <TabsTrigger value="attendance">
                         <CalendarCheck className="mr-2 h-4 w-4" />
                         Asistencia
+                    </TabsTrigger>
+                    <TabsTrigger value="tasks">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Tareas
                     </TabsTrigger>
                     <TabsTrigger value="grades">
                         <ClipboardList className="mr-2 h-4 w-4" />
@@ -418,6 +660,9 @@ export default function CourseDetailsPage({ params }: { params: { courseId: stri
                 </TabsContent>
                 <TabsContent value="attendance">
                     <AttendanceTab courseId={course.id} hasPermission={canManageCourse} />
+                </TabsContent>
+                 <TabsContent value="tasks">
+                    <TasksTab courseId={course.id} hasPermission={canManageCourse} />
                 </TabsContent>
                 <TabsContent value="grades">
                      <PlaceholderTab title="Registro de Calificaciones" />

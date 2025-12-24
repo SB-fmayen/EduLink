@@ -96,6 +96,14 @@ service cloud.firestore {
         // Listar todos los registros del curso
         allow list: if isManager() || isTeacherOfCourse(courseId);
       }
+      
+      // Tareas como subcolección del curso
+      match /tasks/{taskId} {
+        // Leer: El personal y los estudiantes inscritos pueden ver las tareas.
+        allow read: if isStaff() || isStudentEnrolled(courseId);
+        // Escribir: Solo el profesor del curso o un manager pueden crear/editar/eliminar.
+        allow write: if isManager() || isTeacherOfCourse(courseId);
+      }
     }
 
     // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
