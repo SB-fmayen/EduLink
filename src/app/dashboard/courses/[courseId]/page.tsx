@@ -324,9 +324,14 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
         return null;
     }, [firestore, courseId]);
 
-    useCollection<EnrolledStudent>(enrolledStudentsRef, {
-        onData: (data) => setTotalStudents(data?.length || 0),
-    });
+    const { data: enrolledStudents } = useCollection<EnrolledStudent>(enrolledStudentsRef);
+
+     React.useEffect(() => {
+        if (enrolledStudents) {
+            setTotalStudents(enrolledStudents.length);
+        }
+    }, [enrolledStudents]);
+
 
     React.useEffect(() => {
         if (!tasks || !firestore || !courseId) return;
