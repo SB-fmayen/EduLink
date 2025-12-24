@@ -38,7 +38,9 @@ service cloud.firestore {
     }
 
     function getCourse(courseId) {
-      return get(/databases/$(database)/documents/courses/$(courseId));
+      // Asegúrate de que courseDoc y courseDoc.data no sean nulos
+      let courseDoc = get(/databases/$(database)/documents/courses/$(courseId));
+      return courseDoc;
     }
 
     function isTeacherOfCourse(courseId) {
@@ -93,19 +95,6 @@ service cloud.firestore {
                  || (isSignedIn() && resource.data.studentId == request.auth.uid);
         // Listar todos los registros del curso
         allow list: if isManager() || isTeacherOfCourse(courseId);
-      }
-
-      // Tareas como subcolección del curso
-      match /tasks/{taskId} {
-        allow read: if isStaff() || isStudentEnrolled(courseId); // Profesores, admins y estudiantes inscritos pueden leer tareas
-        allow write: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor del curso o admin pueden crear/editar
-        allow delete: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor del curso o admin pueden eliminar
-        
-        match /submissions/{submissionId} {
-           allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(submissionId); // Profesor, admin o el propio estudiante pueden leer su entrega
-           allow create: if isOwner(submissionId) && request.time < get(/databases/$(database)/documents/courses/$(courseId)/tasks/$(taskId)).data.dueDate.toTimestamp(); // El estudiante puede crear su entrega antes de la fecha límite.
-           allow update: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor o admin pueden calificar (actualizar)
-        }
       }
     }
 

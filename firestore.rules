@@ -86,18 +86,6 @@ service cloud.firestore {
         // Listar todos los registros del curso
         allow list: if isManager() || isTeacherOfCourse(courseId);
       }
-      
-      // Tareas como subcolección del curso
-      match /tasks/{taskId} {
-        allow read: if isStaff() || isManager(); // Profesores y admins pueden leer tareas
-        allow write: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor del curso o admin pueden crear/editar
-        
-        match /submissions/{submissionId} {
-           allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(submissionId); // Profesor, admin o el propio estudiante pueden leer su entrega
-           allow create: if isOwner(submissionId) && request.time < get(/databases/$(database)/documents/courses/$(courseId)/tasks/$(taskId)).data.dueDate.timestampValue(); // El estudiante puede crear su entrega antes de la fecha límite.
-           allow update: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor o admin pueden calificar (actualizar)
-        }
-      }
     }
 
     // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
@@ -130,7 +118,3 @@ service cloud.firestore {
     }
   }
 }
-
-
-// Solo un manager puede asignar, actualizar o desasignar cursos a un profesor.
-    
