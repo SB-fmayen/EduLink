@@ -318,6 +318,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
     const [editingTask, setEditingTask] = React.useState<Task | null>(null);
     const [submissionCounts, setSubmissionCounts] = React.useState<Record<string, number>>({});
     const [totalStudents, setTotalStudents] = React.useState(0);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
     const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
 
 
@@ -412,6 +413,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
     
     const handleDeleteClick = (task: Task) => {
         setTaskToDelete(task);
+        setIsDeleteDialogOpen(true);
     };
 
     const executeDelete = async () => {
@@ -432,6 +434,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
             });
         } finally {
             setTaskToDelete(null);
+            setIsDeleteDialogOpen(false);
         }
     };
 
@@ -650,7 +653,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                 </DialogContent>
             </Dialog>
             
-            <AlertDialog open={taskToDelete !== null} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Estás realmente seguro?</AlertDialogTitle>
@@ -660,7 +663,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setTaskToDelete(null)}>Cancelar</AlertDialogCancel>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
