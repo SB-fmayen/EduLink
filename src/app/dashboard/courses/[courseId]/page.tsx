@@ -96,6 +96,7 @@ const taskFormSchema = z.object({
 // --- MÓDULO DE TAREAS RECONSTRUIDO ---
 function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission: boolean }) {
   const firestore = useFirestore();
+  const router = useRouter();
   const tasksRef = useMemoFirebase(() => collection(firestore, `courses/${courseId}/tasks`), [firestore, courseId]);
   const { data: tasks, isLoading } = useCollection<Task>(tasksRef);
 
@@ -125,10 +126,13 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
     form.reset({
       title: task.title,
       description: task.description,
-      // Convierte el Timestamp de Firestore a un objeto Date para el formulario
       dueDate: task.dueDate?.toDate ? task.dueDate.toDate() : new Date(),
     });
     setIsDialogOpen(true);
+  };
+  
+  const handleViewSubmissions = (taskId: string) => {
+    router.push(`/dashboard/courses/${courseId}/tasks/${taskId}`);
   };
 
   // Prepara la tarea para ser eliminada y abre el diálogo de confirmación
@@ -228,6 +232,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                           <DropdownMenuItem onClick={() => handleViewSubmissions(task.id)}>Ver Entregas</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDeleteClick(task)}>Eliminar</DropdownMenuItem>
                         </DropdownMenuContent>
@@ -292,7 +297,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
             <AlertDialogDescription>Esta acción no se puede deshacer. Esto eliminará permanentemente la tarea.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setIsDeleteDialogOpen(false)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

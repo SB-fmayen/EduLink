@@ -103,6 +103,13 @@ service cloud.firestore {
         allow read: if isStaff() || isStudentEnrolled(courseId);
         // Escribir: Solo el profesor del curso o un manager pueden crear/editar/eliminar.
         allow write: if isManager() || isTeacherOfCourse(courseId);
+        
+        match /submissions/{submissionId} {
+            // Un estudiante puede crear/actualizar su propia entrega. El profesor/manager puede actualizarla (para calificar).
+        	allow write: if isManager() || isTeacherOfCourse(courseId) || isOwner(submissionId);
+            // El estudiante puede leer su entrega. El profesor/manager puede leer todas las de la tarea.
+            allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(submissionId);
+        }
       }
     }
 
