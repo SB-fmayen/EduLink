@@ -314,14 +314,19 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
     const firestore = useFirestore();
     const router = useRouter();
 
+    // State for dialogs
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+
+    // State for data being manipulated
     const [editingTask, setEditingTask] = React.useState<Task | null>(null);
+    const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
+    
+    // State for additional UI data
     const [submissionCounts, setSubmissionCounts] = React.useState<Record<string, number>>({});
     const [totalStudents, setTotalStudents] = React.useState(0);
-    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
-    const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
-
-
+    
+    // Data fetching
     const tasksRef = useMemoFirebase(() => {
         if (courseId) { 
             return collection(firestore, `courses/${courseId}/tasks`);
@@ -336,46 +341,20 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
         }
         return null;
     }, [firestore, courseId]);
-
     const { data: enrolledStudents } = useCollection<EnrolledStudent>(enrolledStudentsRef);
 
-     React.useEffect(() => {
-        if (enrolledStudents) {
-            setTotalStudents(enrolledStudents.length);
-        }
-    }, [enrolledStudents]);
-
-
-    React.useEffect(() => {
-        if (!tasks || !firestore || !courseId) return;
-
-        const unsubscribes: Unsubscribe[] = [];
-        
-        tasks.forEach(task => {
-            const submissionsRef = collection(firestore, `courses/${courseId}/tasks/${task.id}/submissions`);
-            const unsubscribe = onSnapshot(submissionsRef, (snapshot) => {
-                setSubmissionCounts(prevCounts => ({
-                    ...prevCounts,
-                    [task.id]: snapshot.size,
-                }));
-            });
-            unsubscribes.push(unsubscribe);
-        });
-
-        return () => unsubscribes.forEach(unsub => unsub());
-
-    }, [tasks, firestore, courseId]);
-
-
+    // Form setup
     const form = useForm<z.infer<typeof taskFormSchema>>({
         resolver: zodResolver(taskFormSchema),
         defaultValues: {
             title: '',
             description: '',
             isGroupTask: false,
+            dueTime: '23:59',
         },
     });
 
+    // Effect for populating form when editing
     React.useEffect(() => {
         if (editingTask) {
             form.reset({
@@ -396,7 +375,28 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
         }
     }, [editingTask, form]);
 
+    // Effects for calculating submission counts and total students
+    React.useEffect(() => {
+        if (enrolledStudents) {
+            setTotalStudents(enrolledStudents.length);
+        }
+    }, [enrolledStudents]);
 
+    React.useEffect(() => {
+        if (!tasks || !firestore || !courseId) return;
+        const unsubscribes: Unsubscribe[] = tasks.map(task => {
+            const submissionsRef = collection(firestore, `courses/${courseId}/tasks/${task.id}/submissions`);
+            return onSnapshot(submissionsRef, (snapshot) => {
+                setSubmissionCounts(prevCounts => ({
+                    ...prevCounts,
+                    [task.id]: snapshot.size,
+                }));
+            });
+        });
+        return () => unsubscribes.forEach(unsub => unsub());
+    }, [tasks, firestore, courseId]);
+
+    // --- Action Handlers ---
     const handleCreateClick = () => {
         setEditingTask(null);
         setIsDialogOpen(true);
@@ -407,7 +407,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
         setIsDialogOpen(true);
     };
 
-     const handleViewSubmissions = (taskId: string) => {
+    const handleViewSubmissions = (taskId: string) => {
         router.push(`/dashboard/courses/${courseId}/tasks/${taskId}`);
     };
     
@@ -433,11 +433,10 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                 description: 'No se pudo eliminar la tarea. Revisa tus permisos.',
             });
         } finally {
-            setTaskToDelete(null);
             setIsDeleteDialogOpen(false);
+            setTaskToDelete(null);
         }
     };
-
 
     const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
         if (!tasksRef || !firestore) return;
@@ -663,7 +662,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setTaskToDelete(null)}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
