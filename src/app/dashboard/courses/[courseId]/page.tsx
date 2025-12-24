@@ -41,7 +41,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Course {
     id: string;
@@ -81,6 +87,7 @@ interface Task {
   title: string;
   description: string;
   dueDate: any; // Mantener como 'any' para manejar Timestamps de Firestore
+  totalPoints?: number;
 }
 
 // --- Esquema de validación para el formulario de tareas ---
@@ -90,6 +97,8 @@ const taskFormSchema = z.object({
   dueDate: z.date({
     required_error: 'La fecha de entrega es requerida.',
   }),
+  dueTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, {message: "Formato de hora inválido (HH:mm)"}),
+  totalPoints: z.coerce.number().min(0, { message: 'Los puntos no pueden ser negativos.'}).default(100),
 });
 
 
@@ -110,23 +119,26 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
 
   const form = useForm<z.infer<typeof taskFormSchema>>({
     resolver: zodResolver(taskFormSchema),
-    defaultValues: { title: '', description: '' },
+    defaultValues: { title: '', description: '', dueTime: '23:59', totalPoints: 100 },
   });
 
   // Abre el diálogo para crear una nueva tarea
   const handleCreateClick = () => {
     setEditingTask(null);
-    form.reset({ title: '', description: '' });
+    form.reset({ title: '', description: '', dueTime: '23:59', totalPoints: 100 });
     setIsDialogOpen(true);
   };
 
   // Abre el diálogo para editar una tarea existente
   const handleEditClick = (task: Task) => {
     setEditingTask(task);
+    const dueDate = task.dueDate?.toDate ? task.dueDate.toDate() : new Date();
     form.reset({
       title: task.title,
       description: task.description,
-      dueDate: task.dueDate?.toDate ? task.dueDate.toDate() : new Date(),
+      dueDate: dueDate,
+      dueTime: format(dueDate, 'HH:mm'),
+      totalPoints: task.totalPoints || 100,
     });
     setIsDialogOpen(true);
   };
@@ -161,15 +173,26 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
   const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
     if (!hasPermission) return;
 
+    const [hours, minutes] = values.dueTime.split(':').map(Number);
+    const finalDueDate = new Date(values.dueDate);
+    finalDueDate.setHours(hours, minutes);
+
+    const payload = {
+      title: values.title,
+      description: values.description,
+      dueDate: finalDueDate,
+      totalPoints: values.totalPoints,
+    };
+
     try {
       if (editingTask) {
         // Actualizar tarea existente
         const taskDocRef = doc(firestore, `courses/${courseId}/tasks`, editingTask.id);
-        await updateDoc(taskDocRef, values);
+        await updateDoc(taskDocRef, payload);
         toast({ title: 'Tarea Actualizada' });
       } else {
         // Crear nueva tarea
-        await addDoc(tasksRef, { ...values, createdAt: serverTimestamp() });
+        await addDoc(tasksRef, { ...payload, createdAt: serverTimestamp() });
         toast({ title: 'Tarea Creada' });
       }
       setIsDialogOpen(false);
@@ -204,18 +227,20 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
             <CardTitle>Tareas del Curso</CardTitle>
             <CardDescription>Gestiona las asignaciones y fechas de entrega.</CardDescription>
           </div>
-          <Button onClick={handleCreateClick}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Crear Tarea
-          </Button>
+          {hasPermission && (
+            <Button onClick={handleCreateClick}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Crear Tarea
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Título</TableHead>
-                <TableHead>Descripción</TableHead>
                 <TableHead>Fecha de Entrega</TableHead>
+                <TableHead>Puntos</TableHead>
                 <TableHead><span className="sr-only">Acciones</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -226,15 +251,15 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                 tasks.map((task) => (
                   <TableRow key={task.id}>
                     <TableCell className="font-medium">{task.title}</TableCell>
-                    <TableCell className="text-muted-foreground truncate max-w-xs">{task.description}</TableCell>
-                    <TableCell>{task.dueDate?.toDate ? format(task.dueDate.toDate(), 'PPP', { locale: es }) : 'N/A'}</TableCell>
+                    <TableCell>{task.dueDate?.toDate ? format(task.dueDate.toDate(), 'PPP p', { locale: es }) : 'N/A'}</TableCell>
+                    <TableCell>{task.totalPoints ?? 'N/A'}</TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                            <DropdownMenuItem onClick={() => handleViewSubmissions(task.id)}>Ver Entregas</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDeleteClick(task)}>Eliminar</DropdownMenuItem>
+                           {hasPermission && <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>}
+                           {hasPermission && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteClick(task); }}>Eliminar</DropdownMenuItem>}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -262,24 +287,40 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
               <FormField control={form.control} name="description" render={({ field }) => (
                 <FormItem><FormLabel>Descripción</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
               )} />
-              <FormField control={form.control} name="dueDate" render={({ field }) => (
-                <FormItem className="flex flex-col"><FormLabel>Fecha de Entrega</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                          {field.value ? format(field.value, "PPP", { locale: es }) : <span>Elige una fecha</span>}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )} />
+               <div className="grid grid-cols-2 gap-4">
+                 <FormField control={form.control} name="dueDate" render={({ field }) => (
+                    <FormItem className="flex flex-col"><FormLabel>Fecha de Entrega</FormLabel>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                        <FormControl>
+                            <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Elige una fecha</span>}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                        </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                        </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                    </FormItem>
+                )} />
+                <FormField control={form.control} name="dueTime" render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                        <FormLabel>Hora de Entrega</FormLabel>
+                        <Input type="time" {...field} />
+                        <FormMessage />
+                    </FormItem>
+                )} />
+               </div>
+               <FormField control={form.control} name="totalPoints" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Puntos Totales</FormLabel>
+                    <FormControl><Input type="number" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                 <Button type="submit">{editingTask ? 'Guardar Cambios' : 'Crear Tarea'}</Button>
@@ -592,8 +633,19 @@ export default function CourseDetailsPage({ params }: { params: { courseId: stri
 
     const canManageCourse = React.useMemo(() => {
         if (isCoreDataLoading || !userProfile || !course) return false;
-        return userProfile.role === 'admin' || userProfile.role === 'director' || user?.uid === course.teacherId;
+        const userIsAdminOrDirector = userProfile.role === 'admin' || userProfile.role === 'director';
+        const userIsTeacherOfCourse = user?.uid === course.teacherId;
+        return userIsAdminOrDirector || userIsTeacherOfCourse;
     }, [isCoreDataLoading, userProfile, course, user]);
+    
+    // El estudiante tiene permisos si está inscrito. (Lógica a futuro)
+    const canViewCourse = React.useMemo(() => {
+        if (isCoreDataLoading || !userProfile || !course) return false;
+        if (canManageCourse) return true;
+        // Aquí se agregaría la lógica para verificar si el estudiante está inscrito.
+        // Por ahora, si no es manager, no puede ver.
+        return false; 
+    }, [isCoreDataLoading, userProfile, course, canManageCourse]);
 
 
     if (isCoreDataLoading) {
@@ -667,7 +719,7 @@ export default function CourseDetailsPage({ params }: { params: { courseId: stri
                     <AttendanceTab courseId={course.id} hasPermission={canManageCourse} />
                 </TabsContent>
                  <TabsContent value="tasks">
-                    <TasksTab courseId={course.id} hasPermission={canManageCourse} />
+                    <TasksTab courseId={course.id} hasPermission={canManageCourse || userProfile.role === 'student'} />
                 </TabsContent>
                 <TabsContent value="grades">
                      <PlaceholderTab title="Registro de Calificaciones" />
