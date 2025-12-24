@@ -332,16 +332,14 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
         if (!tasks || !firestore || !courseId) return;
 
         const unsubscribes: Unsubscribe[] = [];
-        const newCounts: Record<string, number> = {};
-
+        
         tasks.forEach(task => {
             const submissionsRef = collection(firestore, `courses/${courseId}/tasks/${task.id}/submissions`);
             const unsubscribe = onSnapshot(submissionsRef, (snapshot) => {
-                newCounts[task.id] = snapshot.size;
-
-                if (Object.keys(newCounts).length === tasks.length) {
-                    setSubmissionCounts(currentCounts => ({ ...currentCounts, ...newCounts }));
-                }
+                setSubmissionCounts(prevCounts => ({
+                    ...prevCounts,
+                    [task.id]: snapshot.size,
+                }));
             });
             unsubscribes.push(unsubscribe);
         });
