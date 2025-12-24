@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, doc, documentId, setDoc, addDoc, serverTimestamp, updateDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { collection, query, where, doc, documentId, setDoc, addDoc, serverTimestamp, updateDoc, onSnapshot, Unsubscribe, deleteDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck, PlusCircle, MoreHorizontal } from 'lucide-react';
@@ -35,6 +35,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -307,6 +317,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
     const [editingTask, setEditingTask] = React.useState<Task | null>(null);
     const [submissionCounts, setSubmissionCounts] = React.useState<Record<string, number>>({});
     const [totalStudents, setTotalStudents] = React.useState(0);
+    const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
 
 
     const tasksRef = useMemoFirebase(() => {
@@ -397,6 +408,32 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
      const handleViewSubmissions = (taskId: string) => {
         router.push(`/dashboard/courses/${courseId}/tasks/${taskId}`);
     };
+    
+    const handleDeleteClick = (task: Task) => {
+        setTaskToDelete(task);
+    };
+
+    const executeDelete = async () => {
+        if (!taskToDelete || !courseId) return;
+        try {
+            const taskDocRef = doc(firestore, `courses/${courseId}/tasks`, taskToDelete.id);
+            await deleteDoc(taskDocRef);
+            toast({
+                title: 'Tarea Eliminada',
+                description: 'La tarea ha sido eliminada exitosamente.',
+            });
+        } catch (error) {
+            console.error('Error deleting task:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'No se pudo eliminar la tarea. Revisa tus permisos.',
+            });
+        } finally {
+            setTaskToDelete(null);
+        }
+    };
+
 
     const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
         if (!tasksRef) return;
@@ -485,7 +522,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuItem onClick={() => handleViewSubmissions(task.id)}>Ver Entregas</DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => handleEditClick(task)}>Editar</DropdownMenuItem>
-                                                        <DropdownMenuItem>Eliminar</DropdownMenuItem>
+                                                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteClick(task); }}>Eliminar</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -611,6 +648,22 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                     </Form>
                 </DialogContent>
             </Dialog>
+            
+            <AlertDialog open={taskToDelete !== null} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás realmente seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Esto eliminará permanentemente la tarea
+                            y todas las entregas asociadas a ella.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 }

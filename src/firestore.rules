@@ -87,6 +87,19 @@ service cloud.firestore {
          // El staff puede eliminar inscripciones (parte del lote de eliminación de cursos)
          allow delete: if isStaff();
       }
+      
+      // Tareas como subcolección del curso
+      match /tasks/{taskId} {
+        allow read: if isStaff() || isStudentEnrolled(courseId); // Profesores, admins y estudiantes inscritos pueden leer tareas
+        allow write: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor del curso o admin pueden crear/editar
+        allow delete: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor del curso o admin pueden eliminar
+        
+        match /submissions/{submissionId} {
+           allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(submissionId); // Profesor, admin o el propio estudiante pueden leer su entrega
+           allow create: if isOwner(submissionId) && request.time < get(/databases/$(database)/documents/courses/$(courseId)/tasks/$(taskId)).data.dueDate.toTimestamp(); // El estudiante puede crear su entrega antes de la fecha límite.
+           allow update: if isManager() || isTeacherOfCourse(courseId); // Solo el profesor o admin pueden calificar (actualizar)
+        }
+      }
     }
 
     // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
@@ -96,6 +109,11 @@ service cloud.firestore {
                     || (isStaff() && isTeacherOfCourse(resource.data.courseId)) 
                     || isManager();
     }
+    
+    function isStudentEnrolled(courseId) {
+      return exists(/databases/$(database)/documents/courses/$(courseId)/students/$(request.auth.uid));
+    }
+
 
     // --- REGLAS PARA LA COLECCIÓN DE USUARIOS ---
     match /users/{userId} {
