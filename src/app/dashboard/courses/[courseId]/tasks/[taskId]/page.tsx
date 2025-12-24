@@ -127,8 +127,11 @@ export default function TaskSubmissionsPage({ params }: { params: { courseId: st
   const getStatus = (submission: Submission | null, dueDate: Date): { text: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
     const now = new Date();
     if (submission) {
+      if (submission.score !== undefined && submission.score !== null) {
+        return { text: 'Calificado', variant: 'default' };
+      }
       if (submission.submittedAt.toDate() <= dueDate) {
-        return { text: 'Entregada a tiempo', variant: 'default' };
+        return { text: 'Entregada a tiempo', variant: 'secondary' };
       } else {
         return { text: 'Entregada fuera de tiempo', variant: 'secondary' };
       }
@@ -243,7 +246,7 @@ export default function TaskSubmissionsPage({ params }: { params: { courseId: st
                 ))
               ) : studentSubmissions.length > 0 ? (
                 studentSubmissions.map((item) => {
-                  const status = dueDate ? getStatus(item.submission, dueDate) : { text: 'Error de fecha', variant: 'destructive' };
+                  const status = dueDate ? getStatus(item.submission, dueDate) : { text: 'Error de fecha', variant: 'destructive' as const };
                   return (
                     <TableRow key={item.student.id}>
                       <TableCell className="font-medium">
