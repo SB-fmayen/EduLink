@@ -414,7 +414,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
     };
 
     const executeDelete = async () => {
-        if (!taskToDelete || !courseId) return;
+        if (!taskToDelete || !courseId || !firestore) return;
         try {
             const taskDocRef = doc(firestore, `courses/${courseId}/tasks`, taskToDelete.id);
             await deleteDoc(taskDocRef);
@@ -436,7 +436,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
 
 
     const onSubmit = async (values: z.infer<typeof taskFormSchema>) => {
-        if (!tasksRef) return;
+        if (!tasksRef || !firestore) return;
 
         const [hours, minutes] = values.dueTime.split(':').map(Number);
         const finalDueDate = new Date(values.dueDate);
