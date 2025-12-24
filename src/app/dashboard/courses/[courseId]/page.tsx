@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import {
   Card,
   CardContent,
@@ -21,7 +22,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@
 import { collection, query, where, doc, documentId, setDoc, addDoc, serverTimestamp, updateDoc, onSnapshot, Unsubscribe, deleteDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck, PlusCircle, MoreHorizontal } from 'lucide-react';
+import { ClipboardList, FileText, Megaphone, ShieldAlert, Users, CalendarCheck, PlusCircle, MoreHorizontal, ArrowLeft } from 'lucide-react';
 import { Role } from '@/lib/roles';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
@@ -659,7 +660,7 @@ function TasksTab({ courseId, hasPermission }: { courseId: string; hasPermission
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setTaskToDelete(null)}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={executeDelete}>Continuar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -688,6 +689,7 @@ function StudentListTab({ courseId, hasPermission }: { courseId: string, hasPerm
     const studentProfilesQuery = useMemoFirebase(() => {
         if (studentIds === null) return null;
         if (studentIds.length === 0) return null;
+        // Firestore 'in' queries can handle up to 30 elements in the array.
         return query(collection(firestore, 'users'), where(documentId(), 'in', studentIds.slice(0, 30)));
     }, [firestore, studentIds]);
 
@@ -777,7 +779,16 @@ export default function CourseDetailsPage({ params }: { params: { courseId: stri
     }
     
     if (!course || !user || !userProfile) {
-        return <p>No se pudo cargar la información del curso o del usuario.</p>
+        return (
+             <div className="flex flex-col items-center justify-center h-64 text-center">
+                <ArrowLeft className="w-8 h-8 text-muted-foreground mb-4" />
+                <h2 className="text-xl font-semibold">No se encontró el curso</h2>
+                <p className="text-muted-foreground">No se pudo cargar la información del curso o del usuario.</p>
+                <Button variant="outline" asChild className="mt-4">
+                    <Link href="/dashboard">Volver al Panel</Link>
+                </Button>
+            </div>
+        )
     }
     
     const courseTitle = `${course.subjectName} - ${course.gradeName || ''} ${course.sectionName}`.replace(/ -  | - $/, ' - ').trim();
