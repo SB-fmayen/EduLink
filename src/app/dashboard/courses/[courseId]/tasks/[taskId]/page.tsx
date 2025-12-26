@@ -124,25 +124,30 @@ export default function TaskSubmissionsPage({ params }: { params: { courseId: st
     }));
   }, [studentProfiles, submissionsMap]);
 
-  const getStatus = (submission: Submission | null, dueDate: Date): { text: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
-    const now = new Date();
+  const getSubmissionStatus = (submission: Submission | null, dueDate: Date): { text: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
     if (submission) {
-      if (submission.score !== undefined && submission.score !== null) {
-        return { text: 'Calificado', variant: 'default' };
-      }
       if (submission.submittedAt.toDate() <= dueDate) {
         return { text: 'Entregada a tiempo', variant: 'secondary' };
       } else {
         return { text: 'Entregada fuera de tiempo', variant: 'secondary' };
       }
     } else {
-      if (now > dueDate) {
+      if (new Date() > dueDate) {
         return { text: 'No entregó', variant: 'destructive' };
       } else {
         return { text: 'Pendiente', variant: 'outline' };
       }
     }
   };
+
+  const getGradingStatus = (submission: Submission | null): { text: string; variant: 'default' | 'outline' } => {
+    if (submission && submission.score !== undefined && submission.score !== null) {
+      return { text: 'Calificado', variant: 'default' };
+    }
+    // Si hay entrega pero no hay nota, o si no hay entrega, está pendiente de calificación.
+    return { text: 'Pendiente de Calificación', variant: 'outline' };
+  };
+
 
   const handleGradeClick = (studentSubmission: StudentSubmission) => {
     setCurrentSubmission(studentSubmission);
@@ -230,6 +235,7 @@ export default function TaskSubmissionsPage({ params }: { params: { courseId: st
               <TableRow>
                 <TableHead>Nombre del Alumno</TableHead>
                 <TableHead>Estado de Entrega</TableHead>
+                <TableHead>Estado de Calificación</TableHead>
                 <TableHead>Punteo Obtenido</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -240,20 +246,25 @@ export default function TaskSubmissionsPage({ params }: { params: { courseId: st
                   <TableRow key={i}>
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : studentSubmissions.length > 0 ? (
                 studentSubmissions.map((item) => {
-                  const status = dueDate ? getStatus(item.submission, dueDate) : { text: 'Error de fecha', variant: 'destructive' as const };
+                  const submissionStatus = dueDate ? getSubmissionStatus(item.submission, dueDate) : { text: 'Error de fecha', variant: 'destructive' as const };
+                  const gradingStatus = getGradingStatus(item.submission);
                   return (
                     <TableRow key={item.student.id}>
                       <TableCell className="font-medium">
                         {item.student.firstName} {item.student.lastName}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={status.variant}>{status.text}</Badge>
+                        <Badge variant={submissionStatus.variant}>{submissionStatus.text}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={gradingStatus.variant}>{gradingStatus.text}</Badge>
                       </TableCell>
                       <TableCell>
                         {item.submission?.score !== undefined ? `${item.submission.score} / ${totalPoints}` : `- / ${totalPoints}`}
@@ -269,7 +280,7 @@ export default function TaskSubmissionsPage({ params }: { params: { courseId: st
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center">
+                  <TableCell colSpan={5} className="h-24 text-center">
                     No hay estudiantes en esta sección para mostrar.
                   </TableCell>
                 </TableRow>
