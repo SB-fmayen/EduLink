@@ -85,3 +85,5 @@ Este índice es crucial para el módulo de asistencia, permitiendo a los profeso
 - **Ámbito de la consulta**: Colección
 
 Una vez que crees estos índices, Firestore tardará unos minutos en construirlos. Después de eso, las consultas que antes fallaban deberían funcionar correctamente.
+
+Cambio de calificaciones. 
