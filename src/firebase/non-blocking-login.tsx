@@ -1,11 +1,11 @@
 'use client';
+import type { FirebaseError } from 'firebase/app';
 import {
   Auth, // Import Auth type for type hinting
   signInAnonymously,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   User,
-  FirebaseError,
   // Assume getAuth and app are initialized elsewhere
 } from 'firebase/auth';
 

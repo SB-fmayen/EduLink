@@ -3,6 +3,7 @@
 import { useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { useState } from 'react';
 
 export default function AuthLayout({
   children,
@@ -11,14 +12,42 @@ export default function AuthLayout({
 }) {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
+  const [isCheckingRole, setIsCheckingRole] = useState(true);
 
   useEffect(() => {
-    if (!isUserLoading && user) {
-      router.push('/dashboard');
-    }
+    let isMounted = true;
+
+    const checkAdminRole = async () => {
+      if (isUserLoading) return;
+
+      if (!user) {
+        if (isMounted) setIsCheckingRole(false);
+        return;
+      }
+
+      try {
+        const tokenResult = await user.getIdTokenResult(true);
+        if (!isMounted) return;
+
+        if (tokenResult.claims.role === 'admin') {
+          router.push('/admin');
+          return;
+        }
+      } catch {
+        // Ignore token errors and allow the user to continue in auth pages.
+      }
+
+      if (isMounted) setIsCheckingRole(false);
+    };
+
+    checkAdminRole();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user, isUserLoading, router]);
 
-  if (isUserLoading || user) {
+  if (isUserLoading || isCheckingRole) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="book">
@@ -34,7 +63,7 @@ export default function AuthLayout({
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-secondary/50 p-4">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100 p-4">
       {children}
     </main>
   );

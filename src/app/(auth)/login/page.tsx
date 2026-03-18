@@ -26,7 +26,7 @@ import { useAuth } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Correo electrónico inválido.' }),
@@ -49,8 +49,21 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!auth) return;
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
-      // El onAuthStateChanged en el layout se encargará de la redirección
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        values.email,
+        values.password,
+      );
+      const tokenResult = await userCredential.user.getIdTokenResult(true);
+
+      if (tokenResult.claims.role !== 'admin') {
+        await signOut(auth);
+        form.setError('email', { type: 'manual', message: ' ' });
+        form.setError('password', {
+          type: 'manual',
+          message: 'Solo las cuentas con rol administrador pueden ingresar.',
+        });
+      }
     } catch (error: any) {
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
         form.setError('email', { type: 'manual', message: ' ' }); // Marca el campo como error sin texto
@@ -66,7 +79,7 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="mx-auto max-w-sm w-full">
+    <Card className="mx-auto w-full max-w-sm border-slate-300 shadow-xl shadow-slate-300/50">
       <CardHeader className="space-y-4">
         <div className="flex justify-center">
           <Logo />

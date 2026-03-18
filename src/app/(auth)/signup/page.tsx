@@ -12,9 +12,8 @@ import { z } from 'zod';
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { createUserSelfAction } from '@/app/actions/create-user-self-action';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
 import { useAuth } from '@/firebase';
 
 
@@ -42,32 +41,47 @@ export default function SignupPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    try {
-      const { uid, error } = await createUserSelfAction(values.email, values.password, values.firstName, values.lastName);
+    if (!auth) return;
 
-      if (error) {
-        if (error.code === 'auth/email-already-in-use') {
-          form.setError('email', { type: 'manual', message: 'Este correo electrónico ya está en uso.' });
-        } else {
-          throw new Error(error.message);
-        }
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        values.email,
+        values.password,
+      );
+
+      await updateProfile(userCredential.user, {
+        displayName: `${values.firstName} ${values.lastName}`,
+      });
+
+      const tokenResult = await userCredential.user.getIdTokenResult(true);
+
+      if (tokenResult.claims.role === 'admin') {
+        toast({
+          title: 'Cuenta de administrador creada',
+          description: 'Ingresando al panel de administración.',
+        });
+        router.push('/admin');
         return;
       }
-      
-      if (uid) {
-        toast({
-            title: "¡Cuenta Creada!",
-            description: "Tu cuenta ha sido creada con éxito. Iniciando sesión...",
-        });
-        
-        // Automatically sign in the user after successful registration
-        if(auth) {
-            await signInWithEmailAndPassword(auth, values.email, values.password);
-            // The layout's effect will handle the redirection to /dashboard
-        }
-      }
+
+      await signOut(auth);
+      toast({
+        title: 'Cuenta creada',
+        description:
+          'La cuenta se creó correctamente, pero solo los administradores pueden ingresar.',
+      });
+      router.push('/login');
 
     } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        form.setError('email', {
+          type: 'manual',
+          message: 'Este correo electrónico ya está en uso.',
+        });
+        return;
+      }
+
       toast({
         variant: 'destructive',
         title: 'Error al registrar la cuenta',
@@ -78,14 +92,14 @@ export default function SignupPage() {
 
 
   return (
-    <Card className="mx-auto max-w-sm w-full">
+    <Card className="mx-auto w-full max-w-sm border-slate-300 shadow-xl shadow-slate-300/50">
       <CardHeader className="space-y-4">
         <div className="flex justify-center">
           <Logo />
         </div>
         <CardTitle className="text-2xl text-center">Crear una Cuenta</CardTitle>
         <CardDescription className="text-center">
-          Ingresa tus datos para registrarte. Por defecto, tendrás el rol de estudiante.
+          Ingresa tus datos para crear una cuenta. Solo los administradores pueden ingresar.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -107,6 +107,11 @@ service cloud.firestore {
       }
 
       // Reglas para los cursos de una escuela.
+    match /periods/{periodId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
       match /courses/{courseId} {
         allow get, list: if isMemberOfSchool(schoolId);
         // Admins pueden crear cursos.

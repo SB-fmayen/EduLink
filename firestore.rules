@@ -76,6 +76,13 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /periods/{periodId} {
+      // Cualquier usuario autenticado puede ver los periodos.
+      allow get, list: if isSignedIn();
+      // Solo un admin puede gestionar periodos.
+      allow create, update, delete: if isAdmin();
+    }
+
     match /courses/{courseId} {
       // Cualquier usuario autenticado puede ver la información de un curso.
       allow get, list: if isSignedIn();
