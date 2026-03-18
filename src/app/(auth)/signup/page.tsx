@@ -13,9 +13,12 @@ import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+<<<<<<< HEAD
 import { createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
 import { useAuth } from '@/firebase';
 
+=======
+>>>>>>> 6ad85d62f75ce88a423874d3fa533fe525378b51
 
 const formSchema = z.object({
   firstName: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
@@ -28,7 +31,6 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
-  const auth = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -43,6 +45,7 @@ export default function SignupPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!auth) return;
 
+<<<<<<< HEAD
     try {
       const userCredential = await createUserWithEmailAndPassword(
         auth,
@@ -72,6 +75,26 @@ export default function SignupPage() {
           'La cuenta se creó correctamente, pero solo los administradores pueden ingresar.',
       });
       router.push('/login');
+=======
+      if (error) {
+        if (error.code === 'auth/email-already-in-use') {
+          form.setError('email', { type: 'manual', message: 'Este correo electrónico ya está en uso.' });
+        } else {
+          // Lanza el error para que sea atrapado por el bloque catch general
+          throw new Error(error.message);
+        }
+        return;
+      }
+      
+      if (uid) {
+        toast({
+            title: "¡Cuenta Creada!",
+            description: "Tu cuenta ha sido creada con éxito. Ahora puedes iniciar sesión.",
+        });
+        // Redirige al usuario a la página de login después del registro exitoso
+        router.push('/login');
+      }
+>>>>>>> 6ad85d62f75ce88a423874d3fa533fe525378b51
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
@@ -85,11 +108,10 @@ export default function SignupPage() {
       toast({
         variant: 'destructive',
         title: 'Error al registrar la cuenta',
-        description: error.message || 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.',
+        description: error.message || 'Ocurrió un error inesperado. Verifica tus credenciales y la configuración del servidor.',
       });
     }
   }
-
 
   return (
     <Card className="mx-auto w-full max-w-sm border-slate-300 shadow-xl shadow-slate-300/50">

@@ -1,79 +1,68 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // --- Funciones de Ayuda (Helpers) ---
 
-    /**
-     * Verifica si hay un usuario autenticado en la solicitud.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * Verifica si el usuario autenticado es el propietario de un documento.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
     
-    /**
-     * Obtiene el perfil del usuario que realiza la solicitud.
-     */
     function getRequesterProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
-
-    /**
-     * Verifica si el usuario autenticado tiene un rol específico.
-     */
-    function hasRole(role) {
-      return isSignedIn() && getRequesterProfile().data.role == role;
+    
+    function getRole() {
+      let role = getRequesterProfile().data.role;
+      return role != null ? role : '';
     }
 
-    /**
-     * Verifica si el usuario autenticado es un administrador.
-     */
     function isAdmin() {
-      return hasRole('admin');
+      return isSignedIn() && getRole() == 'admin';
+    }
+    
+    // Un 'Manager' es un admin o un director. Tienen permisos de gestión académica.
+    function isManager() {
+      let role = getRole();
+      return isSignedIn() && (role == 'admin' || role == 'director');
+    }
+    
+    // Un 'Staff' es cualquier rol que no sea estudiante o padre. Usado para acceso de lectura extendido.
+    function isStaff() {
+      let role = getRole();
+      return isSignedIn() && (role == 'admin' || role == 'director' || role == 'teacher');
     }
 
-    /**
-     * Verifica si el usuario autenticado es el profesor de un curso específico.
-     */
+    function getCourse(courseId) {
+      return get(/databases/$(database)/documents/courses/$(courseId));
+    }
+
     function isTeacherOfCourse(courseId) {
-      let courseDoc = get(/databases/$(database)/documents/courses/$(courseId));
-      return isSignedIn() && courseDoc.data.teacherId == request.auth.uid;
+      let courseDoc = getCourse(courseId);
+      return isSignedIn()
+        && courseDoc != null
+        && courseDoc.data != null
+        && courseDoc.data.teacherId == request.auth.uid;
     }
 
-    // --- Reglas de Grupos de Colecciones (Collection Groups) ---
-    
-    // Permite a un estudiante consultar los cursos en los que está inscrito.
-    match /{path=**}/students/{studentId} {
-        // Un estudiante puede leer su propia inscripción en un curso.
-        allow get: if isOwner(studentId);
-        // Un estudiante puede listar todas sus inscripciones (para su dashboard).
-        allow list: if (request.query.keys().hasAny(['studentId']) && request.query.studentId == request.auth.uid);
+    // --- REGLAS PARA COLECCIONES EN LA RAÍZ ---
+    match /subjects/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isManager(); // Solo admins y directores
     }
-    
-    // --- Reglas de Colecciones Principales ---
 
-    // Reglas para colecciones académicas (antes anidadas bajo /schools)
-    match /subjects/{subjectId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+    match /grades/{docId} {
+      allow read, write: if isStaff();
+      allow delete: if isManager();
     }
     
-    match /grades/{gradeId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
-    
-    match /sections/{sectionId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+    match /sections/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isManager(); // Solo admins y directores
     }
 
     match /periods/{periodId} {
@@ -84,51 +73,55 @@ service cloud.firestore {
     }
 
     match /courses/{courseId} {
-      // Cualquier usuario autenticado puede ver la información de un curso.
-      allow get, list: if isSignedIn();
-      // Solo un admin puede crear cursos.
-      allow create: if isAdmin();
-      // El profesor del curso o un admin pueden actualizarlo o eliminarlo.
-      allow update, delete: if isTeacherOfCourse(courseId) || isAdmin();
+      allow read: if isStaff();
+      allow write: if isManager();
 
-      // Subcolección de estudiantes inscritos en un curso.
       match /students/{studentId} {
-         // El profesor del curso, un admin, o el propio estudiante pueden ver la inscripción.
-         allow get, list: if isTeacherOfCourse(courseId) || isAdmin() || isOwner(studentId);
-         // El profesor del curso o un admin pueden inscribir o desinscribir estudiantes.
-         allow create, update, delete: if isTeacherOfCourse(courseId) || isAdmin();
+        allow read: if isManager() || isTeacherOfCourse(courseId) || isOwner(studentId);
+        allow write: if isStaff();
+        allow delete: if isStaff();
+      }
+
+      // Asistencia como subcolección del curso
+      match /attendance/{recordId} {
+        // Crear/actualizar
+        allow write: if isManager() || isTeacherOfCourse(courseId);
+        // Leer documento puntual
+        allow get: if isManager()
+                 || isTeacherOfCourse(courseId)
+                 || (isSignedIn() && resource.data.studentId == request.auth.uid);
+        // Listar todos los registros del curso
+        allow list: if isManager() || isTeacherOfCourse(courseId);
       }
     }
-    
-    match /students/{studentId} {
-      // Un admin puede ver la lista de todos los estudiantes.
-      allow get, list: if isAdmin();
-      // Un admin o el propio estudiante al registrarse puede crear la entrada.
-      allow create: if isAdmin() || isOwner(studentId);
-      // Solo un admin puede eliminar la entrada de la lista.
-      allow delete: if isAdmin();
-    }
-    
-    match /teachers/{teacherId} {
-      // Solo los admins pueden gestionar la lista de profesores.
-      allow get, list, create, delete: if isAdmin();
+
+    // --- REGLA PARA CONSULTA DE ESTUDIANTES (Collection Group) ---
+    match /{path=**}/students/{studentDocId} {
+        allow read: if (isSignedIn() && resource.data.studentId == request.auth.uid) 
+                    || (isStaff() && isTeacherOfCourse(resource.data.courseId)) 
+                    || isManager();
     }
 
-    // Reglas para la colección principal de usuarios.
+    // --- REGLAS PARA LA COLECCIÓN DE USUARIOS ---
     match /users/{userId} {
-      // Un usuario puede leer su propio perfil. Un admin puede leer cualquier perfil.
-      allow get: if isOwner(userId) || isAdmin();
-      // Solo un admin puede listar todos los usuarios del sistema.
-      allow list: if isAdmin();
-      
-      // REGLA CLAVE: Un usuario puede crear su propio perfil (auto-registro), 
-      // O un admin puede crear el perfil de cualquier otro usuario.
-      allow create: if isOwner(userId) || isAdmin();
-      
-      // Un usuario puede actualizar su propio perfil. Un admin puede actualizar cualquier perfil.
-      allow update: if isOwner(userId) || isAdmin();
-      // Un usuario puede eliminar su propio perfil. Un admin puede eliminar cualquier perfil.
-      allow delete: if isOwner(userId) || isAdmin();
+      // El personal (staff) puede ver perfiles, el usuario puede ver el suyo.
+      allow get: if isStaff() || isOwner(userId);
+      // Solo el personal (staff) puede listar usuarios (usado en las páginas de gestión).
+      allow list: if isStaff();
+      // Un usuario puede registrarse (crear su propio doc), o un manager puede crear otros.
+      allow create: if isOwner(userId) || isManager();
+      // Un usuario puede actualizar su perfil, o un manager puede actualizar el de otros.
+      allow update: if isOwner(userId) || isManager();
+      // Solo managers pueden eliminar usuarios.
+      allow delete: if isManager();
+
+      // Subcolección para los cursos asignados a un profesor
+      match /assignedCourses/{courseId} {
+        // CORRECCIÓN: El personal puede leer las asignaciones de cualquier profesor.
+        allow read: if isStaff();
+        // Solo un manager puede asignar, actualizar o desasignar cursos a un profesor.
+        allow write: if isManager();
+      }
     }
   }
 }

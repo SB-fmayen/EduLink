@@ -1,0 +1,65 @@
+export type Role = 'admin' | 'teacher' | 'student' | 'parent';
+
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: string; // Changed to string to avoid React component import issues here
+  roles: Role[];
+};
+
+export const menuItems: NavItem[] = [
+  {
+    href: '/dashboard',
+    label: 'Panel',
+    icon: 'LayoutDashboard',
+    roles: ['admin', 'teacher', 'student', 'parent'],
+  },
+  {
+    href: '/dashboard/academics',
+    label: 'Académico',
+    icon: 'BookOpen',
+    roles: ['admin', 'student'],
+  },
+  {
+    href: '/dashboard/students',
+    label: 'Estudiantes',
+    icon: 'Users',
+    roles: ['admin', 'parent'],
+  },
+   {
+    href: '/dashboard/users',
+    label: 'Usuarios',
+    icon: 'Users',
+    roles: ['admin'],
+  },
+  {
+    href: '/dashboard/teachers',
+    label: 'Profesores',
+    icon: 'GraduationCap',
+    roles: ['admin'],
+  },
+  {
+    href: '/dashboard/grades',
+    label: 'Calificaciones',
+    icon: 'ClipboardList',
+    roles: ['admin', 'student', 'parent'],
+  },
+  {
+    href: '/dashboard/finances',
+    label: 'Finanzas',
+    icon: 'Banknote',
+    roles: ['admin', 'student', 'parent'],
+  },
+  {
+    href: '/dashboard/communication',
+    label: 'Comunicación',
+    icon: 'MessageSquare',
+    roles: ['admin', 'teacher', 'student', 'parent'],
+  },
+  {
+    href: '/dashboard/settings',
+    label: 'Configuración',
+    icon: 'Settings',
+    roles: ['admin'],
+  },
+];
